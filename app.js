@@ -45,7 +45,7 @@ function renderDue(){
           <label>Taxa da moeda</label>
           <input id="taxaMoeda" type="number" step="any" placeholder="0,00">
         </div>
-        <div class="output" id="valorConvertido">Valor convertido: R$ 0,00</div>
+        <div class="output" id="valorConvertido">Valor convertido: 0,00</div>
       </div>
 
       <hr>
@@ -59,11 +59,15 @@ function renderDue(){
           <label>Valor unitário</label>
           <input id="valorUnitario" type="number" step="any" placeholder="0,00">
         </div>
-        <div style="display:flex;flex-direction:column;gap:6px;min-width:240px">
-          <div class="small">Total (formatado com separador de milhares)</div>
-          <div class="output" id="totalComMilhares">R$ 0,00</div>
-          <div class="small">Total (sem separador de milhares)</div>
-          <div class="output" id="totalSemMilhares">0,00</div>
+        <div style="display:flex;gap:12px;min-width:240px">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div class="small">Total (formatado com separador de milhares)</div>
+            <div class="output" id="totalComMilhares">0,00</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div class="small">Total (sem separador de milhares)</div>
+            <div class="output" id="totalSemMilhares">0,00</div>
+          </div>
         </div>
       </div>
 
@@ -74,15 +78,52 @@ function renderDue(){
           <label>Frete</label>
           <input id="frete" type="number" step="any" placeholder="0,00">
         </div>
-        <div class="output" id="freteConvertido">Frete / Taxa: 0,00</div>
+        <div style="display:flex;gap:12px;min-width:240px">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div class="small">Frete (sem separador de milhares)</div>
+            <div class="output" id="freteConvertido">0,00</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div class="small">Frete (com separador de milhares)</div>
+            <div class="output" id="freteComMilhares">0,00</div>
+          </div>
+        </div>
       </div>
       <div class="row">
         <div class="field field-small">
           <label>Seguro</label>
           <input id="seguro" type="number" step="any" placeholder="0,00">
         </div>
-        <div class="output" id="seguroConvertido">Seguro / Taxa: 0,00</div>
-      </div>      
+        <div style="display:flex;gap:12px;min-width:240px">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div class="small">Seguro (sem separador de milhares)</div>
+            <div class="output" id="seguroConvertido">0,00</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div class="small">Seguro (com separador de milhares)</div>
+            <div class="output" id="seguroComMilhares">0,00</div>
+          </div>
+        </div>
+      </div>
+      <hr>
+
+      <div class="row">
+        <div style="display:flex;gap:12px;min-width:240px">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div class="small">Resultado final (com separador de milhares)</div>
+            <div class="output" id="finalComMilhares">0,00</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div class="small">Resultado final (sem separador de milhares)</div>
+            <div class="output" id="finalSemMilhares">0,00</div>
+          </div>
+        </div>
+      </div>
+
+      <hr>
+
+      
+      
     </div>
   `;
 
@@ -114,8 +155,12 @@ function attachDueEvents(){
 
   const frete = document.getElementById('frete');
   const freteConvertido = document.getElementById('freteConvertido');
+  const freteComMilhares = document.getElementById('freteComMilhares');
   const seguro = document.getElementById('seguro');
   const seguroConvertido = document.getElementById('seguroConvertido');
+  const seguroComMilhares = document.getElementById('seguroComMilhares');
+  const finalComMilhares = document.getElementById('finalComMilhares');
+  const finalSemMilhares = document.getElementById('finalSemMilhares');
 
 
   function calcConvertido(){
@@ -129,7 +174,7 @@ function attachDueEvents(){
     const p = parseFloat(pesoLiquido.value) || 0;
     const u = parseFloat(valorUnitario.value) || 0;
     const prod = p * u;
-    totalComMilhares.textContent = (isFinite(prod) ? 'R$ ' + fmtWithThousands.format(prod) : 'R$ 0,00');
+    totalComMilhares.textContent = (isFinite(prod) ? fmtWithThousands.format(prod) : '0,00');
     totalSemMilhares.textContent = (isFinite(prod) ? fmtNoThousands.format(prod) : '0,00');
   }
 
@@ -137,14 +182,29 @@ function attachDueEvents(){
     const f = parseFloat(frete.value) || 0;
     const t = parseFloat(taxaMoeda.value) || 0;
     const result = t !== 0 ? f / t : 0;
-    freteConvertido.textContent = 'Frete / Taxa: ' + (isFinite(result) ? fmtNoThousands.format(result) : '0,00');
+    freteConvertido.textContent = (isFinite(result) ? fmtNoThousands.format(result) : '0,00');
+    if(freteComMilhares) freteComMilhares.textContent = (isFinite(result) ? fmtWithThousands.format(result) : '0,00');
   }
 
   function calcSeguro(){
     const s = parseFloat(seguro.value) || 0;
     const t = parseFloat(taxaMoeda.value) || 0;
     const result = t !== 0 ? s / t : 0;
-    seguroConvertido.textContent = 'Seguro / Taxa: ' + (isFinite(result) ? fmtNoThousands.format(result) : '0,00');
+    seguroConvertido.textContent = (isFinite(result) ? fmtNoThousands.format(result) : '0,00');
+    if(seguroComMilhares) seguroComMilhares.textContent = (isFinite(result) ? fmtWithThousands.format(result) : '0,00');
+  }
+
+  function calcFinal(){
+    const v = parseFloat(valorNota.value) || 0;
+    const t = parseFloat(taxaMoeda.value) || 0;
+    const f = parseFloat(frete.value) || 0;
+    const s = parseFloat(seguro.value) || 0;
+    const valorConv = v * t;
+    const freteConv = t !== 0 ? f / t : 0;
+    const seguroConv = t !== 0 ? s / t : 0;
+    const final = valorConv - freteConv - seguroConv;
+    finalComMilhares.textContent = isFinite(final) ? fmtWithThousands.format(final) : '0,00';
+    finalSemMilhares.textContent = isFinite(final) ? fmtNoThousands.format(final) : '0,00';
   }
   
   // Eventos
@@ -152,11 +212,14 @@ function attachDueEvents(){
   [pesoLiquido, valorUnitario].forEach(el => el.addEventListener('input', calcTotais));
   [frete, taxaMoeda].forEach(el => el.addEventListener('input', calcFrete));
   [seguro, taxaMoeda].forEach(el => el.addEventListener('input', calcSeguro));
+  [valorNota, taxaMoeda, frete, seguro].forEach(el => el.addEventListener('input', calcFinal));
 
   // executar cálculos iniciais
   calcConvertido();
   calcTotais();
   calcFrete();
+  calcSeguro();
+  calcFinal();
 }
 
 // Inicializa com a página Due selecionada
