@@ -73,48 +73,69 @@ function renderDue(){
 
       <hr>
 
-      <div class="row">
-        <div class="field field-small">
-          <label>Frete</label>
-          <input id="frete" type="number" step="any" placeholder="0,00">
-        </div>
-        <div style="display:flex;gap:12px;min-width:240px">
-          <div style="display:flex;flex-direction:column;gap:6px">
-            <div class="small">Frete (sem separador de milhares)</div>
-            <div class="output" id="freteConvertido">0,00</div>
+      <div style="display:flex; align-items:center;">
+        <div style="width:180px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+          <div style="margin-bottom:5px; font-weight:bold;">Converter</div>
+          <div style="display:flex; align-items:center; gap:5px;">
+            <span>Não</span>
+            <label style="position:relative; display:inline-block; width:40px; height:22px;">
+              <input type="checkbox" id="swConverter" style="opacity:0; width:0; height:0;">
+              <span class="slider" style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:#ccc; transition:.4s; border-radius:22px;"></span>
+              <span class="knob" style="position:absolute; content:''; height:16px; width:16px; left:3px; bottom:3px; background-color:white; transition:.4s; border-radius:50%;"></span>
+            </label>
+            <span>Sim</span>
           </div>
-          <div style="display:flex;flex-direction:column;gap:6px">
-            <div class="small">Frete (com separador de milhares)</div>
-            <div class="output" id="freteComMilhares">0,00</div>
+          <style>
+            #swConverter:checked + .slider { background-color: #2196F3; }
+            #swConverter:checked + .slider + .knob { transform: translateX(18px); }
+          </style>
+        </div>      
+        <div style="flex:1">
+          <div class="row">
+            <div class="field field-small">
+              <label>Frete</label>
+              <input id="frete" type="number" step="any" placeholder="0,00">
+            </div>
+            <div style="display:flex;gap:12px;min-width:240px">
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <div class="small">Frete (sem separador de milhares)</div>
+                <div class="output" id="freteConvertido">0,00</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <div class="small">Frete (com separador de milhares)</div>
+                <div class="output" id="freteComMilhares">0,00</div>
+              </div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="field field-small">
+              <label>Seguro</label>
+              <input id="seguro" type="number" step="any" placeholder="0,00">
+            </div>
+            <div style="display:flex;gap:12px;min-width:240px">
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <div class="small">Seguro (sem separador de milhares)</div>
+                <div class="output" id="seguroConvertido">0,00</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <div class="small">Seguro (com separador de milhares)</div>
+                <div class="output" id="seguroComMilhares">0,00</div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-      <div class="row">
-        <div class="field field-small">
-          <label>Seguro</label>
-          <input id="seguro" type="number" step="any" placeholder="0,00">
-        </div>
-        <div style="display:flex;gap:12px;min-width:240px">
-          <div style="display:flex;flex-direction:column;gap:6px">
-            <div class="small">Seguro (sem separador de milhares)</div>
-            <div class="output" id="seguroConvertido">0,00</div>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:6px">
-            <div class="small">Seguro (com separador de milhares)</div>
-            <div class="output" id="seguroComMilhares">0,00</div>
-          </div>
-        </div>
+
       </div>
       <hr>
 
       <div class="row">
         <div style="display:flex;gap:12px;min-width:240px">
           <div style="display:flex;flex-direction:column;gap:6px">
-            <div class="small">Resultado final (com separador de milhares)</div>
+            <div class="small">VMLE (com separador de milhares)</div>
             <div class="output" id="finalComMilhares">0,00</div>
           </div>
           <div style="display:flex;flex-direction:column;gap:6px">
-            <div class="small">Resultado final (sem separador de milhares)</div>
+            <div class="small">VMLE (sem separador de milhares)</div>
             <div class="output" id="finalSemMilhares">0,00</div>
           </div>
         </div>
@@ -161,12 +182,13 @@ function attachDueEvents(){
   const seguroComMilhares = document.getElementById('seguroComMilhares');
   const finalComMilhares = document.getElementById('finalComMilhares');
   const finalSemMilhares = document.getElementById('finalSemMilhares');
+  const swConverter = document.getElementById('swConverter');
 
 
   function calcConvertido(){
     const v = parseFloat(valorNota.value) || 0;
     const t = parseFloat(taxaMoeda.value) || 0;
-    const result = v * t;
+    const result = v / t;
     valorConvertido.textContent = 'Valor convertido: ' + (isFinite(result) ? fmtWithThousands.format(result) : '0,00');
   }
 
@@ -181,7 +203,10 @@ function attachDueEvents(){
   function calcFrete(){
     const f = parseFloat(frete.value) || 0;
     const t = parseFloat(taxaMoeda.value) || 0;
-    const result = t !== 0 ? f / t : 0;
+    let result = f;
+    if(swConverter && swConverter.checked){
+      result = t !== 0 ? f / t : 0;
+    }
     freteConvertido.textContent = (isFinite(result) ? fmtNoThousands.format(result) : '0,00');
     if(freteComMilhares) freteComMilhares.textContent = (isFinite(result) ? fmtWithThousands.format(result) : '0,00');
   }
@@ -189,7 +214,10 @@ function attachDueEvents(){
   function calcSeguro(){
     const s = parseFloat(seguro.value) || 0;
     const t = parseFloat(taxaMoeda.value) || 0;
-    const result = t !== 0 ? s / t : 0;
+    let result = s;
+    if(swConverter && swConverter.checked){
+      result = t !== 0 ? s / t : 0;
+    }
     seguroConvertido.textContent = (isFinite(result) ? fmtNoThousands.format(result) : '0,00');
     if(seguroComMilhares) seguroComMilhares.textContent = (isFinite(result) ? fmtWithThousands.format(result) : '0,00');
   }
@@ -200,8 +228,12 @@ function attachDueEvents(){
     const f = parseFloat(frete.value) || 0;
     const s = parseFloat(seguro.value) || 0;
     const valorConv = v * t;
-    const freteConv = t !== 0 ? f / t : 0;
-    const seguroConv = t !== 0 ? s / t : 0;
+    let freteConv = f;
+    let seguroConv = s;
+    if(swConverter && swConverter.checked){
+      freteConv = t !== 0 ? f / t : 0;
+      seguroConv = t !== 0 ? s / t : 0;
+    }
     const final = valorConv - freteConv - seguroConv;
     finalComMilhares.textContent = isFinite(final) ? fmtWithThousands.format(final) : '0,00';
     finalSemMilhares.textContent = isFinite(final) ? fmtNoThousands.format(final) : '0,00';
@@ -213,6 +245,11 @@ function attachDueEvents(){
   [frete, taxaMoeda].forEach(el => el.addEventListener('input', calcFrete));
   [seguro, taxaMoeda].forEach(el => el.addEventListener('input', calcSeguro));
   [valorNota, taxaMoeda, frete, seguro].forEach(el => el.addEventListener('input', calcFinal));
+  if(swConverter) swConverter.addEventListener('change', () => {
+    calcFrete();
+    calcSeguro();
+    calcFinal();
+  });
 
   // executar cálculos iniciais
   calcConvertido();
