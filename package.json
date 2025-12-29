@@ -1,0 +1,11 @@
+{
+  "name": "site-novo",
+  "version": "1.0.0",
+  "description": "Site simples para empresa",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "",
+  "license": "MIT"
+}
