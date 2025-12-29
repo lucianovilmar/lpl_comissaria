@@ -2,6 +2,11 @@
 const navButtons = document.querySelectorAll('.nav-btn');
 const contentArea = document.getElementById('content-area');
 
+// Alterar nome do botão Teste para Calculo de Itens
+navButtons.forEach(btn => {
+  if(btn.dataset.page !== 'due') btn.textContent = 'Calculo de Itens';
+});
+
 // Modo tema (padrão: dark)
 const themeToggle = document.getElementById('themeToggle');
 function applyTheme(theme){
@@ -154,10 +159,186 @@ function renderDue(){
 function renderTeste(){
   contentArea.innerHTML = `
     <div class="card">
-      <h2>Teste</h2>
-      <p>Esta é a página de teste. Você pode adicionar conteúdo aqui.</p>
+      <h2>Calculo de Itens</h2>
+      <div class="row">
+        <div class="field" style="flex:3; margin-right:10px;">
+          <label>Texto Original</label>
+          <textarea id="txtInput" rows="5" style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius:4px;"></textarea>
+        </div>
+        <div class="field" style="flex:1;">
+          <label>Taxa da moeda</label>
+          <input id="taxaMoedaTeste" type="text" inputmode="decimal" placeholder="0,00" style="width:100%; box-sizing:border-box;">
+        </div>
+      </div>
+      <div class="row" style="align-items:flex-end;">
+        <div class="field field-small">
+          <label>Separador (padrão: Tab)</label>
+          <input id="txtSeparator" type="text" placeholder="Tab">
+        </div>
+        <div class="field field-small">
+          <button id="btnProcessar" class="nav-btn active" style="margin:0; width:100%; justify-content:center;">Processar</button>
+        </div>
+      </div>
+      <div class="row" style="display:flex; gap:10px;">
+        <div class="field" style="flex:1;">
+          <label>Coluna 1</label>
+          <input id="txtCol1" type="text" placeholder="Ex: A" style="width:100%; box-sizing:border-box;">
+          <textarea id="txtOutput1" rows="10" style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius:4px; background-color:#f5f5f5;" readonly></textarea>
+        </div>
+        <div class="field" style="flex:1;">
+          <label>Coluna 2</label>
+          <input id="txtCol2" type="text" placeholder="Ex: B" style="width:100%; box-sizing:border-box;">
+          <textarea id="txtOutput2" rows="10" style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius:4px; background-color:#f5f5f5;" readonly></textarea>
+        </div>
+        <div class="field" style="flex:1;">
+          <label>Coluna 3 (Calculado)</label>
+          <div style="height:21px; margin-bottom:3px;"></div>
+          <textarea id="txtOutput3" rows="10" style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius:4px; background-color:#f5f5f5;" readonly></textarea>
+        </div>
+      </div>
+      <div class="row">
+        <div class="output" id="vmcvOutput" style="font-weight:bold; font-size:1.2em; margin-top:10px;">VMCV: 0,00</div>
+      </div>
     </div>
   `;
+  attachTesteEvents();
+}
+
+function attachTesteEvents(){
+  const txtInput = document.getElementById('txtInput');
+  const taxaMoedaTeste = document.getElementById('taxaMoedaTeste');
+  const txtSeparator = document.getElementById('txtSeparator');
+  const btnProcessar = document.getElementById('btnProcessar');
+  const vmcvOutput = document.getElementById('vmcvOutput');
+  
+  const txtCol1 = document.getElementById('txtCol1');
+  const txtOutput1 = document.getElementById('txtOutput1');
+  const txtCol2 = document.getElementById('txtCol2');
+  const txtOutput2 = document.getElementById('txtOutput2');
+  const txtOutput3 = document.getElementById('txtOutput3');
+
+  // Máscara para o campo Taxa (igual ao Due)
+  taxaMoedaTeste.addEventListener('input', function() {
+    this.value = this.value.replace(/[^0-9,]/g, '');
+  });
+  taxaMoedaTeste.addEventListener('keydown', (e) => {
+    if ((e.key === ',' || e.key === '.') && taxaMoedaTeste.value.includes(',')) {
+      e.preventDefault();
+      return;
+    }
+    if (e.key === '.') {
+      e.preventDefault();
+      const start = taxaMoedaTeste.selectionStart;
+      const end = taxaMoedaTeste.selectionEnd;
+      taxaMoedaTeste.value = taxaMoedaTeste.value.substring(0, start) + ',' + taxaMoedaTeste.value.substring(end);
+      taxaMoedaTeste.selectionStart = taxaMoedaTeste.selectionEnd = start + 1;
+    }
+  });
+
+  btnProcessar.addEventListener('click', () => {
+    const text = (txtInput.value || '').trim();
+    const taxaVal = parseFloat((taxaMoedaTeste.value || '0').replace(/\./g, '').replace(',', '.')) || 0;
+    let sep = txtSeparator.value || '\t';
+
+    let lines = text.split('\n');
+
+    // Lógica inteligente para identificar padrão de Nota Fiscal (NCM/CST/CFOP)
+    // Verifica se o texto contém o padrão de 8 dígitos + 3 dígitos + 4 dígitos (NCM CST CFOP)
+    const invoicePatternRegex = /\d{8}\s+\d{3}\s+\d{4}/;
+    const hasInvoicePattern = invoicePatternRegex.test(text);
+
+    if (sep === '\t' && hasInvoicePattern) {
+      const newLines = [];
+      let buffer = '';
+      
+      for (let i = 0; i < lines.length; i++) {
+        let line = lines[i].trim();
+        if (!line) continue;
+
+        const candidate = buffer ? (buffer + ' ' + line) : line;
+        
+        // Regex para capturar NCM(8) CST(3) CFOP(4)
+        const match = candidate.match(/(\d{8})\s+(\d{3})\s+(\d{4})/);
+
+        if (match) {
+          const ncmIdx = match.index;
+          const before = candidate.substring(0, ncmIdx).trim();
+          const after = candidate.substring(ncmIdx).trim();
+
+          // Separar Código e Descrição (assumindo que código é a primeira palavra)
+          const firstSpace = before.indexOf(' ');
+          let code = before;
+          let desc = '';
+          if(firstSpace > 0){
+            code = before.substring(0, firstSpace).trim();
+            desc = before.substring(firstSpace).trim();
+          }
+
+          // Separar o restante (NCM, CST, CFOP, UNID, QUANT...)
+          const parts = after.split(/\s+/);
+          const rest = parts.join('\t');
+
+          newLines.push(`${code}\t${desc}\t${rest}`);
+          buffer = ''; 
+        } else {
+          if (/^\d+/.test(line)) {
+            if(buffer) newLines.push(buffer);
+            buffer = line;
+          } else {
+            if(buffer) buffer += ' ' + line;
+            else newLines.push(line);
+          }
+        }
+      }
+      if(buffer) newLines.push(buffer);
+      lines = newLines;
+    }
+
+    // Função auxiliar para pegar índice da coluna
+    const getColIndex = (str) => {
+      let colStr = str ? str.trim().toUpperCase() : '';
+      if(!colStr) return -1;
+      let colIndex = parseInt(colStr);
+      if(isNaN(colIndex)){
+        colIndex = 0;
+        for(let i=0; i<colStr.length; i++){
+          colIndex = colIndex * 26 + (colStr.charCodeAt(i) - 64);
+        }
+      }
+      return colIndex < 1 ? 1 : colIndex;
+    };
+
+    const idx1 = getColIndex(txtCol1.value);
+    const idx2 = getColIndex(txtCol2.value);
+
+    const res1 = [];
+    const res2 = [];
+    const res3 = [];
+    let totalVMCV = 0;
+
+    lines.forEach(line => {
+      const parts = line.split(sep);
+      
+      const raw1 = idx1 > 0 ? (parts[idx1-1] || '').trim() : '';
+      const raw2 = idx2 > 0 ? (parts[idx2-1] || '').trim() : '';
+
+      const val1 = parseFloat(raw1.replace(/\./g, '').replace(',', '.')) || 0;
+      const val2 = parseFloat(raw2.replace(/\./g, '').replace(',', '.')) || 0;
+
+      // Cálculo: (Col2 / Taxa) * Col1
+      const val3 = taxaVal !== 0 ? (val2 / taxaVal) * val1 : 0;
+      totalVMCV += val3;
+
+      res1.push(raw1);
+      res2.push(raw2);
+      res3.push(isFinite(val3) ? fmtWithThousands.format(val3) : '0,00');
+    });
+
+    txtOutput1.value = res1.join('\n');
+    txtOutput2.value = res2.join('\n');
+    txtOutput3.value = res3.join('\n');
+    vmcvOutput.textContent = 'VMCV: ' + (isFinite(totalVMCV) ? fmtWithThousands.format(totalVMCV) : '0,00');
+  });
 }
 
 // Formatação PT-BR
