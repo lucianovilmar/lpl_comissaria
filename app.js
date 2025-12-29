@@ -39,11 +39,11 @@ function renderDue(){
       <div class="row">
         <div class="field field-large">
           <label>Valor da nota</label>
-          <input id="valorNota" type="number" step="any" placeholder="0,00">
+          <input id="valorNota" type="text" inputmode="decimal" placeholder="0,00">
         </div>
         <div class="field field-small">
           <label>Taxa da moeda</label>
-          <input id="taxaMoeda" type="number" step="any" placeholder="0,00">
+          <input id="taxaMoeda" type="text" inputmode="decimal" placeholder="0,00">
         </div>
         <div class="output" id="valorConvertido">Valor convertido: 0,00</div>
       </div>
@@ -53,11 +53,11 @@ function renderDue(){
       <div class="row">
         <div class="field field-small">
           <label>Peso líquido</label>
-          <input id="pesoLiquido" type="number" step="any" placeholder="0,00">
+          <input id="pesoLiquido" type="text" inputmode="decimal" placeholder="0,00">
         </div>
         <div class="field field-small">
           <label>Valor unitário</label>
-          <input id="valorUnitario" type="number" step="any" placeholder="0,00">
+          <input id="valorUnitario" type="text" inputmode="decimal" placeholder="0,00">
         </div>
         <div style="display:flex;gap:12px;min-width:240px">
           <div style="display:flex;flex-direction:column;gap:6px">
@@ -94,7 +94,7 @@ function renderDue(){
           <div class="row">
             <div class="field field-small">
               <label>Frete</label>
-              <input id="frete" type="number" step="any" placeholder="0,00">
+              <input id="frete" type="text" inputmode="decimal" placeholder="0,00">
             </div>
             <div style="display:flex;gap:12px;min-width:240px">
               <div style="display:flex;flex-direction:column;gap:6px">
@@ -110,7 +110,7 @@ function renderDue(){
           <div class="row">
             <div class="field field-small">
               <label>Seguro</label>
-              <input id="seguro" type="number" step="any" placeholder="0,00">
+              <input id="seguro" type="text" inputmode="decimal" placeholder="0,00">
             </div>
             <div style="display:flex;gap:12px;min-width:240px">
               <div style="display:flex;flex-direction:column;gap:6px">
@@ -184,25 +184,30 @@ function attachDueEvents(){
   const finalSemMilhares = document.getElementById('finalSemMilhares');
   const swConverter = document.getElementById('swConverter');
 
+  function parseMoney(val){
+    if(!val) return 0;
+    // Remove pontos (milhar) e troca vírgula por ponto (decimal)
+    return parseFloat(val.replace(/\./g, '').replace(',', '.')) || 0;
+  }
 
   function calcConvertido(){
-    const v = parseFloat(valorNota.value) || 0;
-    const t = parseFloat(taxaMoeda.value) || 0;
+    const v = parseMoney(valorNota.value);
+    const t = parseMoney(taxaMoeda.value);
     const result = v / t;
     valorConvertido.textContent = 'Valor convertido: ' + (isFinite(result) ? fmtWithThousands.format(result) : '0,00');
   }
 
   function calcTotais(){
-    const p = parseFloat(pesoLiquido.value) || 0;
-    const u = parseFloat(valorUnitario.value) || 0;
+    const p = parseMoney(pesoLiquido.value);
+    const u = parseMoney(valorUnitario.value);
     const prod = p * u;
     totalComMilhares.textContent = (isFinite(prod) ? fmtWithThousands.format(prod) : '0,00');
     totalSemMilhares.textContent = (isFinite(prod) ? fmtNoThousands.format(prod) : '0,00');
   }
 
   function calcFrete(){
-    const f = parseFloat(frete.value) || 0;
-    const t = parseFloat(taxaMoeda.value) || 0;
+    const f = parseMoney(frete.value);
+    const t = parseMoney(taxaMoeda.value);
     let result = f;
     if(swConverter && swConverter.checked){
       result = t !== 0 ? f / t : 0;
@@ -212,8 +217,8 @@ function attachDueEvents(){
   }
 
   function calcSeguro(){
-    const s = parseFloat(seguro.value) || 0;
-    const t = parseFloat(taxaMoeda.value) || 0;
+    const s = parseMoney(seguro.value);
+    const t = parseMoney(taxaMoeda.value);
     let result = s;
     if(swConverter && swConverter.checked){
       result = t !== 0 ? s / t : 0;
@@ -223,11 +228,11 @@ function attachDueEvents(){
   }
 
   function calcFinal(){
-    const v = parseFloat(valorNota.value) || 0;
-    const t = parseFloat(taxaMoeda.value) || 0;
-    const f = parseFloat(frete.value) || 0;
-    const s = parseFloat(seguro.value) || 0;
-    const valorConv = v * t;
+    const v = parseMoney(valorNota.value);
+    const t = parseMoney(taxaMoeda.value);
+    const f = parseMoney(frete.value);
+    const s = parseMoney(seguro.value);
+    const valorConv = v / t;
     let freteConv = f;
     let seguroConv = s;
     if(swConverter && swConverter.checked){
@@ -240,6 +245,28 @@ function attachDueEvents(){
   }
   
   // Eventos
+  [valorNota, taxaMoeda, pesoLiquido, valorUnitario, frete, seguro].forEach(el => {
+    el.addEventListener('input', function() {
+      // Apenas remove caracteres inválidos, permitindo ponto e vírgula (para colar funcionar)
+      this.value = this.value.replace(/[^0-9.,]/g, '');
+    });
+    el.addEventListener('keydown', (e) => {
+      // Se já existe vírgula, impede digitar outra vírgula ou ponto
+      if ((e.key === ',' || e.key === '.') && el.value.includes(',')) {
+        e.preventDefault();
+        return;
+      }
+      if(e.key === '.'){
+        e.preventDefault();
+        const start = el.selectionStart;
+        const end = el.selectionEnd;
+        el.value = el.value.substring(0, start) + ',' + el.value.substring(end);
+        el.selectionStart = el.selectionEnd = start + 1;
+        el.dispatchEvent(new Event('input'));
+      }
+    });
+  });
+
   [valorNota, taxaMoeda].forEach(el => el.addEventListener('input', calcConvertido));
   [pesoLiquido, valorUnitario].forEach(el => el.addEventListener('input', calcTotais));
   [frete, taxaMoeda].forEach(el => el.addEventListener('input', calcFrete));
