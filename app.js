@@ -325,8 +325,12 @@ function attachTesteEvents(){
       const val1 = parseFloat(raw1.replace(/\./g, '').replace(',', '.')) || 0;
       const val2 = parseFloat(raw2.replace(/\./g, '').replace(',', '.')) || 0;
 
-      // Cálculo: (Col2 / Taxa) * Col1
-      const val3 = taxaVal !== 0 ? (val2 / taxaVal) * val1 : 0;
+      // Cálculo: (Col2 / Taxa) truncado a 2 decimais, depois * Col1
+      let val3 = 0;
+      if (taxaVal !== 0) {
+        const converted = Math.trunc((val2 / taxaVal) * 100) / 100;
+        val3 = converted * val1;
+      }
       totalVMCV += val3;
 
       res1.push(raw1);
