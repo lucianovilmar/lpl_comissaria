@@ -1,10 +1,20 @@
 // Navegação
+// Injetar botão "Gerar Planilha" se não existir
+const firstNavBtn = document.querySelector('.nav-btn');
+if(firstNavBtn && firstNavBtn.parentNode && !document.querySelector('[data-page="planilha"]')){
+  const btn = document.createElement('button');
+  btn.className = 'nav-btn';
+  btn.dataset.page = 'planilha';
+  btn.textContent = 'Gerar Planilha';
+  firstNavBtn.parentNode.appendChild(btn);
+}
+
 const navButtons = document.querySelectorAll('.nav-btn');
 const contentArea = document.getElementById('content-area');
 
 // Alterar nome do botão Teste para Calculo de Itens
 navButtons.forEach(btn => {
-  if(btn.dataset.page !== 'due') btn.textContent = 'Calculo de Itens';
+  if(btn.dataset.page !== 'due' && btn.dataset.page !== 'planilha') btn.textContent = 'Calculo de Itens';
 });
 
 // Modo tema (padrão: dark)
@@ -33,6 +43,7 @@ navButtons.forEach(btn => btn.addEventListener('click', () => {
 
 function loadPage(page){
   if(page === 'due') renderDue();
+  else if(page === 'planilha') renderPlanilha();
   else renderTeste();
 }
 
@@ -154,6 +165,144 @@ function renderDue(){
   `;
 
   attachDueEvents();
+}
+
+function renderPlanilha(){
+  contentArea.innerHTML = `
+    <div class="card">
+      <h2>Gerar Planilha</h2>
+      
+      <div class="row">
+        <div class="field" style="width:100%">
+          <label>Arquivos XML</label>
+          <input id="xmlInput" type="file" multiple accept=".xml" style="width:100%">
+        </div>
+      </div>
+
+      <div class="row" style="align-items:center; margin-top:15px; margin-bottom:15px;">
+        <div style="margin-right:10px; font-weight:bold;">Modo:</div>
+        <div style="display:flex; align-items:center; gap:5px;">
+          <span>Novo</span>
+          <label style="position:relative; display:inline-block; width:40px; height:22px;">
+            <input type="checkbox" id="swModeAppend" style="opacity:0; width:0; height:0;">
+            <span class="slider" style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:#ccc; transition:.4s; border-radius:22px;"></span>
+            <span class="knob" style="position:absolute; content:''; height:16px; width:16px; left:3px; bottom:3px; background-color:white; transition:.4s; border-radius:50%;"></span>
+          </label>
+          <span>Adicionar</span>
+        </div>
+        <style>
+          #swModeAppend:checked + .slider { background-color: #2196F3; }
+          #swModeAppend:checked + .slider + .knob { transform: translateX(18px); }
+        </style>
+      </div>
+
+      <div class="row" id="appendRow" style="display:none;">
+        <div class="field" style="width:100%">
+          <label>Planilha Existente (.xlsx)</label>
+          <input id="xlsxInput" type="file" accept=".xlsx" style="width:100%">
+        </div>
+      </div>
+
+      <div class="row">
+        <button id="btnImportar" class="nav-btn active" style="margin:0;">Importar</button>
+      </div>
+
+      <div class="row" style="margin-top:20px;">
+        <div id="previewArea" style="width:100%; height:33vh; border:1px solid #ccc; border-radius:4px; overflow:auto; padding:10px; background:rgba(255,255,255,0.05);">
+          <div style="text-align:center; color:#888; margin-top:20px;">Área de visualização de dados</div>
+        </div>
+      </div>
+
+      <div class="row" style="justify-content:flex-end; margin-top:10px;">
+        <button id="btnExportar" class="nav-btn active" style="margin:0;">Exportar</button>
+      </div>
+    </div>
+  `;
+  attachPlanilhaEvents();
+}
+
+function attachPlanilhaEvents(){
+  const swModeAppend = document.getElementById('swModeAppend');
+  const appendRow = document.getElementById('appendRow');
+  const btnImportar = document.getElementById('btnImportar');
+  const xmlInput = document.getElementById('xmlInput');
+  const previewArea = document.getElementById('previewArea');
+  const btnExportar = document.getElementById('btnExportar');
+  const xlsxInput = document.getElementById('xlsxInput');
+
+  if(swModeAppend){
+    swModeAppend.addEventListener('change', () => {
+      appendRow.style.display = swModeAppend.checked ? 'flex' : 'none';
+    });
+  }
+
+  if(btnImportar && xmlInput){
+    btnImportar.addEventListener('click', async () => {
+      const files = xmlInput.files;
+      if(!files || files.length === 0){
+        alert('Por favor, selecione pelo menos um arquivo XML.');
+        return;
+      }
+
+      previewArea.innerHTML = '<div style="padding:10px; text-align:center;">Processando arquivos...</div>';
+      
+      try {
+        const allData = window.currentPlanilhaData || [];
+        const existingFiles = new Set(allData.map(d => d.Arquivo));
+        let hasNew = false;
+
+        for(let i=0; i<files.length; i++){
+          if(existingFiles.has(files[i].name)) continue;
+
+          const text = await readFileAsText(files[i]);
+          const items = parseNFeXML(text, files[i].name);
+          allData.push(...items);
+          hasNew = true;
+        }
+        renderPreviewTable(allData, previewArea);
+        // Salvar em variável global se necessário para exportação futura
+        window.currentPlanilhaData = allData;
+        
+        if(!hasNew && files.length > 0) alert('Arquivos já adicionados anteriormente.');
+      } catch(error){
+        console.error(error);
+        previewArea.innerHTML = '<div style="padding:10px; color:red;">Erro ao processar arquivos. Verifique o console.</div>';
+      }
+    });
+  }
+
+  if(btnExportar){
+    btnExportar.addEventListener('click', async () => {
+      // Carregar biblioteca XLSX com estilos se não existir
+      if(!window.XLSX) await loadScript('https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.min.js');
+
+      let finalData = window.currentPlanilhaData || [];
+
+      // Modo Adicionar: Ler planilha existente
+      if(swModeAppend && swModeAppend.checked){
+        if(xlsxInput && xlsxInput.files.length > 0){
+          try {
+            const existingData = await readExcelFile(xlsxInput.files[0]);
+            finalData = [...existingData, ...finalData];
+          } catch(e){
+            console.error(e);
+            alert('Erro ao ler a planilha existente. Verifique se é um arquivo .xlsx válido.');
+            return;
+          }
+        } else {
+          alert('Selecione uma planilha existente para adicionar os dados.');
+          return;
+        }
+      }
+
+      if(finalData.length === 0){
+        alert('Não há dados para exportar.');
+        return;
+      }
+
+      generateMinervaExcel(finalData);
+    });
+  }
 }
 
 function renderTeste(){
@@ -473,3 +622,340 @@ function attachDueEvents(){
 
 // Inicializa com a página Due selecionada
 loadPage('due');
+
+// --- Funções Auxiliares para Planilha ---
+
+function loadScript(src){
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+function readFileAsText(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = e => reject(e);
+    reader.readAsText(file);
+  });
+}
+
+function parseNFeXML(xmlText, fileName){
+  const parser = new DOMParser();
+  const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+  
+  const getValue = (parent, tag) => {
+    if(!parent) return '';
+    const els = parent.getElementsByTagName(tag);
+    return els.length > 0 ? els[0].textContent : '';
+  };
+
+  const infNFe = xmlDoc.getElementsByTagName('infNFe')[0];
+  if(!infNFe) return []; 
+
+  const ide = infNFe.getElementsByTagName('ide')[0];
+  const emit = infNFe.getElementsByTagName('emit')[0];
+  const dest = infNFe.getElementsByTagName('dest')[0];
+  const transp = infNFe.getElementsByTagName('transp')[0];
+  const infAdic = infNFe.getElementsByTagName('infAdic')[0];
+  const dets = infNFe.getElementsByTagName('det');
+
+  const nNF = ide ? getValue(ide, 'nNF') : '';
+  let emitNome = emit ? getValue(emit, 'xNome') : '';
+  const emitMun = emit ? getValue(emit, 'xMun') : '';
+  if(emitMun) emitNome += ' - ' + emitMun;
+  const emitCNPJ = emit ? getValue(emit, 'CNPJ') : '';
+  const destNome = dest ? getValue(dest, 'xNome') : '';
+
+  // Extração de dados logísticos para concatenação
+  let qVol = '';
+  if(transp){
+    const vol = transp.getElementsByTagName('vol')[0];
+    if(vol) qVol = getValue(vol, 'qVol');
+  }
+
+  const infCpl = infAdic ? getValue(infAdic, 'infCpl') : '';
+  
+  // Regex para Pallets: // 21 PALLETS //
+  let pallets = '';
+  const matchPallets = infCpl.match(/\/\/\s*(\d+)\s*PALLETS\s*\/\//i);
+  if(matchPallets) pallets = matchPallets[1];
+
+  // Regex para Container: // CONTAINER: SUDU 603390 5 //
+  let container = '';
+  const matchContainer = infCpl.match(/\/\/\s*CONTAINER:\s*(.*?)\s*\/\//i);
+  if(matchContainer){
+    container = matchContainer[1].replace(/\s+/g, '');
+  }
+
+  // Concatenação: NF "numero" - "caixas" CXS - "pallets" PLTS - "container"
+  const logistica = `NF ${nNF} - ${qVol || '?'} CXS - ${pallets || '?'} PLTS - ${container || '?'}`;
+
+  const items = [];
+  for(let i=0; i<dets.length; i++){
+    const prod = dets[i].getElementsByTagName('prod')[0];
+    if(prod){
+      const infAdProd = getValue(dets[i], 'infAdProd');
+      const descricao = getValue(prod, 'xProd');
+
+      let caixas = 0;
+      if(infAdProd){
+        const match = infAdProd.match(/Qtde\s+apresenta[cç][aã]o\s*=\s*(\d+)\s*\/\//i);
+        if(match) caixas = parseInt(match[1], 10);
+      }
+
+      items.push({
+        Arquivo: fileName,
+        Numero: nNF,
+        Emitente: emitNome,
+        CNPJ: emitCNPJ,
+        Destinatario: destNome,
+        Codigo: getValue(prod, 'cProd'),
+        Descricao: descricao,
+        NCM: getValue(prod, 'NCM'),
+        CFOP: getValue(prod, 'CFOP'),
+        Unid: getValue(prod, 'uCom'),
+        Qtd: getValue(prod, 'qCom').replace('.', ','),
+        Caixas: caixas,
+        Logistica: logistica
+      });
+    }
+  }
+  return items;
+}
+
+function readExcelFile(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, {type: 'array'});
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const jsonData = XLSX.utils.sheet_to_json(firstSheet, {defval:''});
+      
+      let lastNumero = '';
+      let lastEmitente = '';
+      let lastCNPJ = '';
+      let lastDestinatario = '';
+      let lastLogistica = '';
+
+      const mappedData = jsonData.map(row => {
+        let num = row['NÚMERO'];
+        let emit = row['EMITENTE'];
+        let cnpj = row['CNPJ'];
+        let dest = row['DESTINATÁRIO'];
+        let log = row['LOGISTICA'];
+
+        if(num !== undefined && num !== '' && num !== null){
+          lastNumero = num;
+          lastEmitente = emit;
+          lastCNPJ = cnpj;
+          lastDestinatario = dest;
+          lastLogistica = log;
+        } else if(row['PRODUTO'] || row['NCM']){
+          num = lastNumero;
+          emit = lastEmitente;
+          cnpj = lastCNPJ;
+          dest = lastDestinatario;
+          log = lastLogistica;
+        }
+
+        return {
+          Arquivo: 'Existente',
+          Numero: num || '',
+          Emitente: emit || '',
+          CNPJ: cnpj || '',
+          Destinatario: dest || '',
+          NCM: row['NCM'] || '',
+          Codigo: '', 
+          Descricao: row['PRODUTO'] || '',
+          Unid: row['UNID'] || '',
+          Qtd: row['QTD'] || '',
+          Logistica: log || ''
+        };
+      });
+      resolve(mappedData);
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function renderPreviewTable(data, container){
+  if(!data || data.length === 0){
+    container.innerHTML = '<div style="text-align:center; color:#888; margin-top:20px;">Nenhum dado encontrado.</div>';
+    return;
+  }
+  
+  // Tabela Detalhada
+  let html = '<h3 style="margin-top:0; font-size:1.1em;">Dados Detalhados</h3>';
+  html += '<div style="overflow:auto; max-height:35vh; margin-bottom:20px; border:1px solid #444;">';
+  html += '<table style="width:100%; border-collapse:collapse; font-size:12px;">';
+  html += '<thead><tr style="background:rgba(255,255,255,0.1);">';
+  
+  const headers = Object.keys(data[0]);
+  headers.forEach(h => {
+    html += `<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">${h}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+  
+  data.forEach(row => {
+    html += '<tr>';
+    headers.forEach(h => {
+      html += `<td style="padding:6px; border-bottom:1px solid #444;">${row[h]}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+
+  // Tabela Agregada (Resumo)
+  const aggregated = calculateAggregation(data);
+  html += '<h3 style="margin-top:0; font-size:1.1em;">Resumo por CNPJ e Produto</h3>';
+  html += '<div style="overflow:auto; max-height:35vh; border:1px solid #444;">';
+  html += '<table style="width:100%; border-collapse:collapse; font-size:12px;">';
+  html += '<thead><tr style="background:rgba(255,255,255,0.1);">';
+  html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">CNPJ</th>';
+  html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Código</th>';
+  html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Descrição</th>';
+  html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Total Caixas</th>';
+  html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Total Peso Líquido</th>';
+  html += '</tr></thead><tbody>';
+
+  aggregated.forEach(row => {
+    html += '<tr>';
+    html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.CNPJ}</td>`;
+    html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.Codigo}</td>`;
+    html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.Descricao}</td>`;
+    html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.TotalCaixas}</td>`;
+    html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.TotalPeso.toLocaleString('pt-BR', {minimumFractionDigits:3})}</td>`;
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  
+  container.innerHTML = html;
+}
+
+function calculateAggregation(data){
+  const groups = {};
+
+  data.forEach(item => {
+    const cnpj = item.CNPJ || '';
+    const codigo = item.Codigo || '';
+    const key = `${cnpj}_${codigo}`;
+
+    if(!groups[key]){
+      groups[key] = { CNPJ: cnpj, Codigo: codigo, Descricao: item.Descricao, TotalCaixas: 0, TotalPeso: 0 };
+    }
+
+    let qtdStr = item.Qtd ? String(item.Qtd) : '0';
+    qtdStr = qtdStr.replace(/\./g, '').replace(',', '.');
+    groups[key].TotalPeso += (parseFloat(qtdStr) || 0);
+
+    if(item.Caixas) groups[key].TotalCaixas += item.Caixas;
+  });
+
+  return Object.values(groups).sort((a,b) => {
+    if(a.CNPJ !== b.CNPJ) return a.CNPJ.localeCompare(b.CNPJ);
+    return a.Codigo.localeCompare(b.Codigo);
+  });
+}
+
+function generateMinervaExcel(data){
+  // Ordenar por CNPJ e depois por Número
+  data.sort((a, b) => {
+    if(a.CNPJ !== b.CNPJ) return a.CNPJ.localeCompare(b.CNPJ);
+    return (parseInt(a.Numero) || 0) - (parseInt(b.Numero) || 0);
+  });
+
+  const headers = ["NÚMERO", "EMITENTE", "CNPJ", "DESTINATÁRIO", "NCM", "PRODUTO", "UNID", "QTD", "LOGISTICA"];
+  const wsData = [headers];
+
+  data.forEach(item => {
+    let produtoTexto = item.Descricao;
+    if(item.Codigo && !item.Descricao.startsWith(item.Codigo)){
+      produtoTexto = `${item.Codigo} - ${item.Descricao}`;
+    }
+
+    // Formatar números
+    const qtd = typeof item.Qtd === 'string' ? parseFloat(item.Qtd.replace(/\./g, '').replace(',', '.')) : item.Qtd;
+
+    wsData.push([
+      item.Numero,
+      item.Emitente,
+      item.CNPJ,
+      item.Destinatario,
+      item.NCM,
+      produtoTexto,
+      item.Unid,
+      qtd || 0,
+      item.Logistica
+    ]);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // Largura das Colunas
+  ws['!cols'] = [
+    { wch: 12 }, { wch: 30 }, { wch: 18 }, { wch: 30 }, { wch: 12 },
+    { wch: 50 }, { wch: 6 }, { wch: 12 }, { wch: 50 }
+  ];
+
+  // Estilos
+  const headerStyle = {
+    font: { bold: true, color: { rgb: "FFFFFF" }, name: "Calibri", sz: 11 },
+    fill: { fgColor: { rgb: "1F4E78" } },
+    alignment: { horizontal: "center", vertical: "center" },
+    border: { top: {style:'thin'}, bottom: {style:'thin'}, left: {style:'thin'}, right: {style:'thin'} }
+  };
+
+  const cellStyle = {
+    font: { name: "Calibri", sz: 11 },
+    alignment: { vertical: "center", wrapText: true },
+    border: { top: {style:'thin'}, bottom: {style:'thin'}, left: {style:'thin'}, right: {style:'thin'} }
+  };
+
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for(let R = range.s.r; R <= range.e.r; ++R){
+    for(let C = range.s.c; C <= range.e.c; ++C){
+      const cellRef = XLSX.utils.encode_cell({r:R, c:C});
+      if(!ws[cellRef]) continue;
+      
+      if(R === 0) {
+        ws[cellRef].s = headerStyle;
+      } else {
+        ws[cellRef].s = {...cellStyle};
+        // Formatação de Números
+        if(C === 7) ws[cellRef].z = "#,##0.000"; // Qtd
+        // Centralizar
+        if([0,2,4,6].includes(C)) ws[cellRef].s.alignment = {...cellStyle.alignment, horizontal: "center"};
+      }
+    }
+  }
+
+  // Mesclagem
+  // Numero(0), Emitente(1), CNPJ(2), Dest(3), Logistica(10)
+  const merges = [];
+  for(let col of [0, 1, 2, 3, 8]){
+    let startRow = 1;
+    for(let r = 2; r <= range.e.r + 1; r++){
+      const prevVal = wsData[r-1] ? wsData[r-1][0] : null;
+      const currVal = (r < wsData.length) ? wsData[r][0] : null;
+
+      if(currVal !== prevVal){
+        if(r - 1 > startRow){
+          merges.push({ s: {r: startRow, c: col}, e: {r: r-1, c: col} });
+        }
+        startRow = r;
+      }
+    }
+  }
+  ws['!merges'] = merges;
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Dados");
+  XLSX.writeFile(wb, "LPL_Planilha.xlsx");
+}
