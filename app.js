@@ -178,6 +178,9 @@ function renderPlanilha(){
           <input id="xmlInput" type="file" multiple accept=".xml" style="width:100%">
         </div>
       </div>
+      <div class="row" style="justify-content:flex-end; margin-bottom:10px;">
+        <button id="btnLimparXML" class="nav-btn" style="margin:0; width:auto;">Limpar Dados</button>
+      </div>
 
       <div class="row" style="align-items:center; margin-top:15px; margin-bottom:15px;">
         <div style="margin-right:10px; font-weight:bold;">Modo:</div>
@@ -229,10 +232,20 @@ function attachPlanilhaEvents(){
   const previewArea = document.getElementById('previewArea');
   const btnExportar = document.getElementById('btnExportar');
   const xlsxInput = document.getElementById('xlsxInput');
+  const btnLimparXML = document.getElementById('btnLimparXML');
 
   if(swModeAppend){
     swModeAppend.addEventListener('change', () => {
       appendRow.style.display = swModeAppend.checked ? 'flex' : 'none';
+    });
+  }
+
+  if(btnLimparXML){
+    btnLimparXML.addEventListener('click', () => {
+      window.currentPlanilhaData = [];
+      if(xmlInput) xmlInput.value = '';
+      if(previewArea) previewArea.innerHTML = '<div style="text-align:center; color:#888; margin-top:20px;">Área de visualização de dados</div>';
+      alert('Dados limpos com sucesso.');
     });
   }
 
@@ -671,12 +684,24 @@ function parseNFeXML(xmlText, fileName){
   const emitCNPJ = emit ? getValue(emit, 'CNPJ') : '';
   const destNome = dest ? getValue(dest, 'xNome') : '';
 
-  // Extração de dados logísticos para concatenação
-  let qVol = '';
+  // Extração de dados logísticos e pesos para cálculo
+  let qVolStr = '';
+  let qVolNum = 0;
+  let pesoLNum = 0;
+  let pesoBNum = 0;
+
   if(transp){
     const vol = transp.getElementsByTagName('vol')[0];
-    if(vol) qVol = getValue(vol, 'qVol');
+    if(vol){
+      qVolStr = getValue(vol, 'qVol');
+      qVolNum = parseFloat(qVolStr) || 0;
+      pesoLNum = parseFloat(getValue(vol, 'pesoL')) || 0;
+      pesoBNum = parseFloat(getValue(vol, 'pesoB')) || 0;
+    }
   }
+
+  const xDiferenca = Math.max(0, pesoBNum - pesoLNum);
+  const pesoExtraPorCaixa = qVolNum > 0 ? (xDiferenca / qVolNum) : 0;
 
   const infCpl = infAdic ? getValue(infAdic, 'infCpl') : '';
   
@@ -693,7 +718,7 @@ function parseNFeXML(xmlText, fileName){
   }
 
   // Concatenação: NF "numero" - "caixas" CXS - "pallets" PLTS - "container"
-  const logistica = `NF ${nNF} - ${qVol || '?'} CXS - ${pallets || '?'} PLTS - ${container || '?'}`;
+  const logistica = `NF ${nNF} - ${qVolStr || '?'} CXS - ${pallets || '?'} PLTS - ${container || '?'}`;
 
   const items = [];
   for(let i=0; i<dets.length; i++){
@@ -708,6 +733,10 @@ function parseNFeXML(xmlText, fileName){
         if(match) caixas = parseInt(match[1], 10);
       }
 
+      // Cálculo Peso Bruto do Item (Peso Líquido + Proporcional da Embalagem)
+      const itemPesoLiquido = parseFloat(getValue(prod, 'qCom')) || 0;
+      const itemPesoBruto = itemPesoLiquido + (pesoExtraPorCaixa * caixas);
+
       items.push({
         Arquivo: fileName,
         Numero: nNF,
@@ -721,6 +750,7 @@ function parseNFeXML(xmlText, fileName){
         Unid: getValue(prod, 'uCom'),
         Qtd: getValue(prod, 'qCom').replace('.', ','),
         Caixas: caixas,
+        PesoBruto: itemPesoBruto,
         Logistica: logistica
       });
     }
@@ -791,23 +821,39 @@ function renderPreviewTable(data, container){
     return;
   }
   
+  // Preparar dados para visualização simplificada (Agrupado por Nota)
+  const invoices = new Map();
+  data.forEach(item => {
+    const key = `${item.Arquivo}_${item.Numero}`;
+    if(!invoices.has(key)){
+      let cnpjFmt = item.CNPJ || '';
+      if(cnpjFmt.length === 14){
+        cnpjFmt = cnpjFmt.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+      }
+      invoices.set(key, {
+        Arquivo: item.Arquivo,
+        Emitente: `${item.Emitente} - ${cnpjFmt}`,
+        DadosDaNota: item.Logistica
+      });
+    }
+  });
+  const displayData = Array.from(invoices.values());
+
   // Tabela Detalhada
   let html = '<h3 style="margin-top:0; font-size:1.1em;">Dados Detalhados</h3>';
   html += '<div style="overflow:auto; max-height:35vh; margin-bottom:20px; border:1px solid #444;">';
   html += '<table style="width:100%; border-collapse:collapse; font-size:12px;">';
   html += '<thead><tr style="background:rgba(255,255,255,0.1);">';
-  
-  const headers = Object.keys(data[0]);
-  headers.forEach(h => {
-    html += `<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">${h}</th>`;
-  });
+  html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Arquivo</th>';
+  html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Emitente</th>';
+  html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Dados da Nota</th>';
   html += '</tr></thead><tbody>';
   
-  data.forEach(row => {
+  displayData.forEach(row => {
     html += '<tr>';
-    headers.forEach(h => {
-      html += `<td style="padding:6px; border-bottom:1px solid #444;">${row[h]}</td>`;
-    });
+    html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.Arquivo}</td>`;
+    html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.Emitente}</td>`;
+    html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.DadosDaNota}</td>`;
     html += '</tr>';
   });
   html += '</tbody></table></div>';
@@ -823,6 +869,7 @@ function renderPreviewTable(data, container){
   html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Descrição</th>';
   html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Total Caixas</th>';
   html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Total Peso Líquido</th>';
+  html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Total Peso Bruto</th>';
   html += '</tr></thead><tbody>';
 
   aggregated.forEach(row => {
@@ -832,6 +879,7 @@ function renderPreviewTable(data, container){
     html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.Descricao}</td>`;
     html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.TotalCaixas}</td>`;
     html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.TotalPeso.toLocaleString('pt-BR', {minimumFractionDigits:3})}</td>`;
+    html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.TotalPesoBruto.toLocaleString('pt-BR', {minimumFractionDigits:3})}</td>`;
     html += '</tr>';
   });
   html += '</tbody></table></div>';
@@ -848,7 +896,7 @@ function calculateAggregation(data){
     const key = `${cnpj}_${codigo}`;
 
     if(!groups[key]){
-      groups[key] = { CNPJ: cnpj, Codigo: codigo, Descricao: item.Descricao, TotalCaixas: 0, TotalPeso: 0 };
+      groups[key] = { CNPJ: cnpj, Codigo: codigo, Descricao: item.Descricao, TotalCaixas: 0, TotalPeso: 0, TotalPesoBruto: 0 };
     }
 
     let qtdStr = item.Qtd ? String(item.Qtd) : '0';
@@ -856,6 +904,7 @@ function calculateAggregation(data){
     groups[key].TotalPeso += (parseFloat(qtdStr) || 0);
 
     if(item.Caixas) groups[key].TotalCaixas += item.Caixas;
+    if(item.PesoBruto) groups[key].TotalPesoBruto += item.PesoBruto;
   });
 
   return Object.values(groups).sort((a,b) => {
