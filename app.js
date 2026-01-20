@@ -212,7 +212,13 @@ function renderPlanilha(){
 
       <div class="row" style="margin-top:20px;">
         <div id="previewArea" style="width:100%; height:33vh; border:1px solid #ccc; border-radius:4px; overflow:auto; padding:10px; background:rgba(255,255,255,0.05);">
-          <div style="text-align:center; color:#888; margin-top:20px;">Área de visualização de dados</div>
+          <div style="text-align:center; color:#888; margin-top:20px;">Dados Detalhados</div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:20px;">
+        <div id="previewAreaSummary" style="width:100%; height:33vh; border:1px solid #ccc; border-radius:4px; overflow:auto; padding:10px; background:rgba(255,255,255,0.05);">
+          <div style="text-align:center; color:#888; margin-top:20px;">Resumo por CNPJ e Produto</div>
         </div>
       </div>
 
@@ -230,6 +236,7 @@ function attachPlanilhaEvents(){
   const btnImportar = document.getElementById('btnImportar');
   const xmlInput = document.getElementById('xmlInput');
   const previewArea = document.getElementById('previewArea');
+  const previewAreaSummary = document.getElementById('previewAreaSummary');
   const btnExportar = document.getElementById('btnExportar');
   const xlsxInput = document.getElementById('xlsxInput');
   const btnLimparXML = document.getElementById('btnLimparXML');
@@ -244,7 +251,8 @@ function attachPlanilhaEvents(){
     btnLimparXML.addEventListener('click', () => {
       window.currentPlanilhaData = [];
       if(xmlInput) xmlInput.value = '';
-      if(previewArea) previewArea.innerHTML = '<div style="text-align:center; color:#888; margin-top:20px;">Área de visualização de dados</div>';
+      if(previewArea) previewArea.innerHTML = '<div style="text-align:center; color:#888; margin-top:20px;">Dados Detalhados</div>';
+      if(previewAreaSummary) previewAreaSummary.innerHTML = '<div style="text-align:center; color:#888; margin-top:20px;">Resumo por CNPJ e Produto</div>';
       alert('Dados limpos com sucesso.');
     });
   }
@@ -272,7 +280,7 @@ function attachPlanilhaEvents(){
           allData.push(...items);
           hasNew = true;
         }
-        renderPreviewTable(allData, previewArea);
+        renderPreviewTables(allData);
         // Salvar em variável global se necessário para exportação futura
         window.currentPlanilhaData = allData;
         
@@ -815,9 +823,14 @@ function readExcelFile(file){
   });
 }
 
-function renderPreviewTable(data, container){
+function renderPreviewTables(data){
+  const containerDetail = document.getElementById('previewArea');
+  const containerSummary = document.getElementById('previewAreaSummary');
+
   if(!data || data.length === 0){
-    container.innerHTML = '<div style="text-align:center; color:#888; margin-top:20px;">Nenhum dado encontrado.</div>';
+    const msg = '<div style="text-align:center; color:#888; margin-top:20px;">Nenhum dado encontrado.</div>';
+    if(containerDetail) containerDetail.innerHTML = msg;
+    if(containerSummary) containerSummary.innerHTML = msg;
     return;
   }
   
@@ -840,51 +853,49 @@ function renderPreviewTable(data, container){
   const displayData = Array.from(invoices.values());
 
   // Tabela Detalhada
-  let html = '<h3 style="margin-top:0; font-size:1.1em;">Dados Detalhados</h3>';
-  html += '<div style="overflow:auto; max-height:35vh; margin-bottom:20px; border:1px solid #444;">';
-  html += '<table style="width:100%; border-collapse:collapse; font-size:12px;">';
-  html += '<thead><tr style="background:rgba(255,255,255,0.1);">';
-  html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Arquivo</th>';
-  html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Emitente</th>';
-  html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Dados da Nota</th>';
-  html += '</tr></thead><tbody>';
+  let htmlDetail = '<h3 style="margin-top:0; font-size:1.1em;">Dados Detalhados</h3>';
+  htmlDetail += '<table style="width:100%; border-collapse:collapse; font-size:12px;">';
+  htmlDetail += '<thead><tr style="background:rgba(255,255,255,0.1);">';
+  htmlDetail += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Arquivo</th>';
+  htmlDetail += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Emitente</th>';
+  htmlDetail += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Dados da Nota</th>';
+  htmlDetail += '</tr></thead><tbody>';
   
   displayData.forEach(row => {
-    html += '<tr>';
-    html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.Arquivo}</td>`;
-    html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.Emitente}</td>`;
-    html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.DadosDaNota}</td>`;
-    html += '</tr>';
+    htmlDetail += '<tr>';
+    htmlDetail += `<td style="padding:6px; border-bottom:1px solid #444;">${row.Arquivo}</td>`;
+    htmlDetail += `<td style="padding:6px; border-bottom:1px solid #444;">${row.Emitente}</td>`;
+    htmlDetail += `<td style="padding:6px; border-bottom:1px solid #444;">${row.DadosDaNota}</td>`;
+    htmlDetail += '</tr>';
   });
-  html += '</tbody></table></div>';
+  htmlDetail += '</tbody></table>';
+  if(containerDetail) containerDetail.innerHTML = htmlDetail;
 
   // Tabela Agregada (Resumo)
   const aggregated = calculateAggregation(data);
-  html += '<h3 style="margin-top:0; font-size:1.1em;">Resumo por CNPJ e Produto</h3>';
-  html += '<div style="overflow:auto; max-height:35vh; border:1px solid #444;">';
-  html += '<table style="width:100%; border-collapse:collapse; font-size:12px;">';
-  html += '<thead><tr style="background:rgba(255,255,255,0.1);">';
-  html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">CNPJ</th>';
-  html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Código</th>';
-  html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Descrição</th>';
-  html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Total Caixas</th>';
-  html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Total Peso Líquido</th>';
-  html += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Total Peso Bruto</th>';
-  html += '</tr></thead><tbody>';
+  let htmlSummary = '<h3 style="margin-top:0; font-size:1.1em;">Resumo por CNPJ e Produto</h3>';
+  htmlSummary += '<table style="width:100%; border-collapse:collapse; font-size:12px;">';
+  htmlSummary += '<thead><tr style="background:rgba(255,255,255,0.1);">';
+  htmlSummary += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">CNPJ</th>';
+  htmlSummary += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Código</th>';
+  htmlSummary += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Descrição</th>';
+  htmlSummary += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Total Caixas</th>';
+  htmlSummary += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Total Peso Líquido</th>';
+  htmlSummary += '<th style="padding:8px; text-align:left; border-bottom:1px solid #555; position:sticky; top:0; background:#333;">Total Peso Bruto</th>';
+  htmlSummary += '</tr></thead><tbody>';
 
   aggregated.forEach(row => {
-    html += '<tr>';
-    html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.CNPJ}</td>`;
-    html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.Codigo}</td>`;
-    html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.Descricao}</td>`;
-    html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.TotalCaixas}</td>`;
-    html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.TotalPeso.toLocaleString('pt-BR', {minimumFractionDigits:3})}</td>`;
-    html += `<td style="padding:6px; border-bottom:1px solid #444;">${row.TotalPesoBruto.toLocaleString('pt-BR', {minimumFractionDigits:3})}</td>`;
-    html += '</tr>';
+    htmlSummary += '<tr>';
+    htmlSummary += `<td style="padding:6px; border-bottom:1px solid #444;">${row.CNPJ}</td>`;
+    htmlSummary += `<td style="padding:6px; border-bottom:1px solid #444;">${row.Codigo}</td>`;
+    htmlSummary += `<td style="padding:6px; border-bottom:1px solid #444;">${row.Descricao}</td>`;
+    htmlSummary += `<td style="padding:6px; border-bottom:1px solid #444;">${row.TotalCaixas}</td>`;
+    htmlSummary += `<td style="padding:6px; border-bottom:1px solid #444;">${row.TotalPeso.toLocaleString('pt-BR', {minimumFractionDigits:3})}</td>`;
+    htmlSummary += `<td style="padding:6px; border-bottom:1px solid #444;">${row.TotalPesoBruto.toLocaleString('pt-BR', {minimumFractionDigits:3})}</td>`;
+    htmlSummary += '</tr>';
   });
-  html += '</tbody></table></div>';
-  
-  container.innerHTML = html;
+  htmlSummary += '</tbody></table>';
+  if(containerSummary) containerSummary.innerHTML = htmlSummary;
 }
 
 function calculateAggregation(data){
