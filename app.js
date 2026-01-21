@@ -241,6 +241,11 @@ function attachPlanilhaEvents(){
   const xlsxInput = document.getElementById('xlsxInput');
   const btnLimparXML = document.getElementById('btnLimparXML');
 
+  // Pre-carregar biblioteca ExcelJS para exportação com estilos fiéis
+  if(!window.ExcelJS){
+    loadScript('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js').catch(console.error);
+  }
+
   if(swModeAppend){
     swModeAppend.addEventListener('change', () => {
       appendRow.style.display = swModeAppend.checked ? 'flex' : 'none';
@@ -294,8 +299,15 @@ function attachPlanilhaEvents(){
 
   if(btnExportar){
     btnExportar.addEventListener('click', async () => {
-      // Carregar biblioteca XLSX com estilos se não existir
-      if(!window.XLSX) await loadScript('https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.min.js');
+      // Carregar ExcelJS para exportação
+      if(!window.ExcelJS) {
+        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js');
+      }
+      
+      // Carregar XLSX (SheetJS) apenas se for necessário ler arquivo existente (Append Mode)
+      if(swModeAppend && swModeAppend.checked && !window.XLSX){
+         await loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
+      }
 
       let finalData = window.currentPlanilhaData || [];
 
@@ -321,7 +333,12 @@ function attachPlanilhaEvents(){
         return;
       }
 
-      generateMinervaExcel(finalData);
+      try {
+        await generateMinervaExcel(finalData);
+      } catch(e){
+        console.error(e);
+        alert('Erro ao gerar o arquivo Excel: ' + e.message);
+      }
     });
   }
 }
@@ -715,7 +732,15 @@ function parseNFeXML(xmlText, fileName){
   
   // Regex para Pallets: // 21 PALLETS //
   let pallets = '';
-  const matchPallets = infCpl.match(/\/\/\s*(\d+)\s*PALLETS\s*\/\//i);
+  let matchPallets = infCpl.match(/\/\/\s*(\d+)\s*PALLETS\s*\/\//i);
+  if(!matchPallets){
+    // Fallback: // FORAM CARREGADOS 20 PALLETS //
+    matchPallets = infCpl.match(/\/\/\s*FORAM\s+CARREGADOS\s+(\d+)\s+PALLETS\s*\/\//i);
+  }
+  if(!matchPallets){
+    // Fallback 2: // 21 PALLETS PD: 16013154 //
+    matchPallets = infCpl.match(/\/\/\s*(\d+)\s*PALLETS.*?\/\//i);
+  }
   if(matchPallets) pallets = matchPallets[1];
 
   // Regex para Container: // CONTAINER: SUDU 603390 5 //
@@ -924,98 +949,204 @@ function calculateAggregation(data){
   });
 }
 
-function generateMinervaExcel(data){
-  // Ordenar por CNPJ e depois por Número
-  data.sort((a, b) => {
-    if(a.CNPJ !== b.CNPJ) return a.CNPJ.localeCompare(b.CNPJ);
-    return (parseInt(a.Numero) || 0) - (parseInt(b.Numero) || 0);
-  });
+async function generateMinervaExcel(data){
+  // 1. Validar Dados
+  const cnpjs = [...new Set(data.map(item => item.CNPJ))].filter(Boolean);
+  if(cnpjs.length === 0) {
+    alert("Nenhum CNPJ encontrado para gerar o relatório.");
+    return;
+  }
 
-  const headers = ["NÚMERO", "EMITENTE", "CNPJ", "DESTINATÁRIO", "NCM", "PRODUTO", "UNID", "QTD", "LOGISTICA"];
-  const wsData = [headers];
+  // 2. Carregar arquivo base com ExcelJS (preserva estilos)
+  let buffer;
+  try {
+    const response = await fetch('assets/Planilha_base.xlsx');
+    if(!response.ok) throw new Error("Arquivo base não encontrado");
+    buffer = await response.arrayBuffer();
+  } catch(e) {
+    console.error(e);
+    alert("Erro ao carregar o arquivo base (assets/Planilha_base.xlsx). Verifique se o arquivo existe na pasta assets.");
+    return;
+  }
 
-  data.forEach(item => {
-    let produtoTexto = item.Descricao;
-    if(item.Codigo && !item.Descricao.startsWith(item.Codigo)){
-      produtoTexto = `${item.Codigo} - ${item.Descricao}`;
-    }
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buffer);
+  const srcWs = wb.getWorksheet(1); // Primeira aba
 
-    // Formatar números
-    const qtd = typeof item.Qtd === 'string' ? parseFloat(item.Qtd.replace(/\./g, '').replace(',', '.')) : item.Qtd;
+  // Criar novo Workbook para saída
+  const newWb = new ExcelJS.Workbook();
+  const destWs = newWb.addWorksheet("Aba nova LPL");
 
-    wsData.push([
-      item.Numero,
-      item.Emitente,
-      item.CNPJ,
-      item.Destinatario,
-      item.NCM,
-      produtoTexto,
-      item.Unid,
-      qtd || 0,
-      item.Logistica
-    ]);
-  });
-
-  const ws = XLSX.utils.aoa_to_sheet(wsData);
-
-  // Largura das Colunas
-  ws['!cols'] = [
-    { wch: 12 }, { wch: 30 }, { wch: 18 }, { wch: 30 }, { wch: 12 },
-    { wch: 50 }, { wch: 6 }, { wch: 12 }, { wch: 50 }
-  ];
-
-  // Estilos
-  const headerStyle = {
-    font: { bold: true, color: { rgb: "FFFFFF" }, name: "Calibri", sz: 11 },
-    fill: { fgColor: { rgb: "1F4E78" } },
-    alignment: { horizontal: "center", vertical: "center" },
-    border: { top: {style:'thin'}, bottom: {style:'thin'}, left: {style:'thin'}, right: {style:'thin'} }
-  };
-
-  const cellStyle = {
-    font: { name: "Calibri", sz: 11 },
-    alignment: { vertical: "center", wrapText: true },
-    border: { top: {style:'thin'}, bottom: {style:'thin'}, left: {style:'thin'}, right: {style:'thin'} }
-  };
-
-  const range = XLSX.utils.decode_range(ws['!ref']);
-  for(let R = range.s.r; R <= range.e.r; ++R){
-    for(let C = range.s.c; C <= range.e.c; ++C){
-      const cellRef = XLSX.utils.encode_cell({r:R, c:C});
-      if(!ws[cellRef]) continue;
-      
-      if(R === 0) {
-        ws[cellRef].s = headerStyle;
-      } else {
-        ws[cellRef].s = {...cellStyle};
-        // Formatação de Números
-        if(C === 7) ws[cellRef].z = "#,##0.000"; // Qtd
-        // Centralizar
-        if([0,2,4,6].includes(C)) ws[cellRef].s.alignment = {...cellStyle.alignment, horizontal: "center"};
-      }
+  // --- Funções Auxiliares ---
+  
+  // Copiar larguras das colunas (A até J por segurança)
+  for(let i=1; i<=10; i++){
+    const srcCol = srcWs.getColumn(i);
+    if(srcCol && srcCol.width) {
+        destWs.getColumn(i).width = srcCol.width;
     }
   }
 
-  // Mesclagem
-  // Numero(0), Emitente(1), CNPJ(2), Dest(3), Logistica(10)
-  const merges = [];
-  for(let col of [0, 1, 2, 3, 8]){
-    let startRow = 1;
-    for(let r = 2; r <= range.e.r + 1; r++){
-      const prevVal = wsData[r-1] ? wsData[r-1][0] : null;
-      const currVal = (r < wsData.length) ? wsData[r][0] : null;
+  // Helper para converter índice de coluna em letra (1->A, 2->B)
+  const getColLetter = (colIdx) => {
+      let dividend = colIdx;
+      let columnName = "";
+      let modulo;
+      while (dividend > 0) {
+          modulo = (dividend - 1) % 26;
+          columnName = String.fromCharCode(65 + modulo) + columnName;
+          dividend = Math.floor((dividend - 1) / 26);
+      }
+      return columnName;
+  };
 
-      if(currVal !== prevVal){
-        if(r - 1 > startRow){
-          merges.push({ s: {r: startRow, c: col}, e: {r: r-1, c: col} });
+  // Helper para parsear range de merge (ex: "A1:B2")
+  const parseRange = (rangeStr) => {
+    if(!rangeStr) return null;
+    const parts = rangeStr.split(':');
+    if(parts.length !== 2) return null;
+    const parseCell = (c) => {
+      const match = c.match(/([A-Z]+)([0-9]+)/);
+      if(!match) return null;
+      return { col: match[1], row: parseInt(match[2]) };
+    };
+    const s = parseCell(parts[0]);
+    const e = parseCell(parts[1]);
+    if(!s || !e) return null;
+    return { s, e };
+  };
+
+  // Helper para copiar uma linha inteira (estilo e conteúdo)
+  const copyRow = (srcR, destR) => {
+    const sRow = srcWs.getRow(srcR);
+    const dRow = destWs.getRow(destR);
+    dRow.height = sRow.height;
+    
+    sRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      const dCell = dRow.getCell(colNumber);
+      dCell.value = cell.value;
+      dCell.style = JSON.parse(JSON.stringify(cell.style)); // Copia profunda do estilo
+    });
+    
+    // Copiar Merges que começam nesta linha
+    (srcWs.model.merges || []).forEach(rangeStr => {
+        const range = parseRange(rangeStr);
+        if(range && range.s.row === srcR){
+            const rowSpan = range.e.row - range.s.row;
+            const startCol = range.s.col;
+            const endCol = range.e.col;
+            const destStartRow = destR;
+            const destEndRow = destR + rowSpan;
+            // Aplicar merge no destino
+            destWs.mergeCells(`${startCol}${destStartRow}:${endCol}${destEndRow}`);
         }
-        startRow = r;
+    });
+  };
+
+  // 3. Copiar Cabeçalho Fixo (Linhas 1 a 10)
+  let currentDestRow = 1;
+  for (let r = 1; r <= 10; r++) {
+    copyRow(r, currentDestRow);
+    currentDestRow++;
+  }
+
+  // 4. Processar Grupos
+  // Linhas do Template (Baseado no Excel, índice 1): 11 a 19
+  const tStart = 11;
+  const tEnd = 19;
+  const tProdRow = 14;
+  const tLogRow = 16;
+  const tTotalRow = 19;
+
+  const groups = {};
+  data.forEach(item => {
+    const cnpj = item.CNPJ || 'SEM_CNPJ';
+    if (!groups[cnpj]) groups[cnpj] = { CNPJ: item.CNPJ, items: [] };
+    groups[cnpj].items.push(item);
+  });
+  const sortedGroups = Object.values(groups).sort((a, b) => (a.CNPJ || '').localeCompare(b.CNPJ || ''));
+
+  for (const group of sortedGroups) {
+    const groupStartRow = currentDestRow;
+    
+    const products = calculateAggregation(group.items);
+    const logisticsRaw = [...new Set(group.items.map(i => i.Logistica))];
+    const numProdRows = Math.max(1, products.length);
+    const numLogRows = Math.max(1, Math.ceil(logisticsRaw.length / 2));
+
+    // Iterar Linhas do Template
+    for (let tR = tStart; tR <= tEnd; tR++) {
+      
+      if (tR === tProdRow) {
+        // Repetir para Produtos
+        for (let i = 0; i < numProdRows; i++) {
+          copyRow(tR, currentDestRow);
+          const prod = products[i];
+          const row = destWs.getRow(currentDestRow);
+          
+          if (prod) {
+            row.getCell(1).value = prod.Codigo; // A
+            row.getCell(2).value = prod.Descricao; // B
+            row.getCell(3).value = prod.TotalCaixas; // C
+            row.getCell(4).value = prod.TotalPeso; // D
+            row.getCell(5).value = prod.TotalPesoBruto; // E
+          } else {
+             // Limpar valores se for linha extra vazia
+             [1,2,3,4,5].forEach(c => row.getCell(c).value = null);
+          }
+          currentDestRow++;
+        }
+      } else if (tR === tLogRow) {
+        // Repetir para Logística
+        for (let i = 0; i < numLogRows; i++) {
+          copyRow(tR, currentDestRow);
+          const idx1 = i * 2;
+          const idx2 = i * 2 + 1;
+          const row = destWs.getRow(currentDestRow);
+          
+          row.getCell(1).value = logisticsRaw[idx1] || "";
+          row.getCell(2).value = logisticsRaw[idx2] || "";
+          // Limpar outras células se necessário
+          if(row.getCell(3).value) row.getCell(3).value = null;
+          currentDestRow++;
+        }
+      } else {
+        // Cópia Padrão de Linha Única
+        copyRow(tR, currentDestRow);
+        const row = destWs.getRow(currentDestRow);
+
+        // Substituições Específicas
+        if (tR === 11) { // Emitente
+           let cnpjFmt = group.CNPJ || '';
+           if(cnpjFmt.length === 14) cnpjFmt = cnpjFmt.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+           row.getCell(1).value = `${group.items[0].Emitente} - ${cnpjFmt}`;
+        }
+        
+        if (tR === tTotalRow) { // Totais (Fórmulas)
+           // Calcular intervalo dos produtos para este grupo
+           // Header (11,12,13) são 3 linhas. Produtos começam em groupStartRow + 3
+           const prodStart = groupStartRow + 3;
+           const prodEnd = prodStart + numProdRows - 1;
+           
+           ['C', 'D', 'E'].forEach(col => {
+               // ExcelJS usa índice 1-based: C=3, D=4, E=5
+               const colIdx = col === 'C' ? 3 : col === 'D' ? 4 : 5;
+               row.getCell(colIdx).value = { formula: `SUM(${col}${prodStart}:${col}${prodEnd})` };
+           });
+        }
+
+        currentDestRow++;
       }
     }
   }
-  ws['!merges'] = merges;
 
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Dados");
-  XLSX.writeFile(wb, "LPL_Planilha.xlsx");
+  // 5. Exportar
+  const bufferOut = await newWb.xlsx.writeBuffer();
+  const blob = new Blob([bufferOut], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "LPL_Planilha.xlsx";
+  anchor.click();
+  window.URL.revokeObjectURL(url);
 }
