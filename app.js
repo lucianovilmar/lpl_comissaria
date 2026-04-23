@@ -877,6 +877,18 @@ function renderPreviewTables(data){
   });
   const displayData = Array.from(invoices.values());
 
+  // Ordenar displayData por número NF crescente
+  const extractNFNumber = (text) => {
+    const match = text && text.match(/NF\s*([0-9]+)\s*-/i);
+    return match ? parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
+  };
+  displayData.sort((a, b) => {
+    const numA = extractNFNumber(a.DadosDaNota);
+    const numB = extractNFNumber(b.DadosDaNota);
+    if (numA !== numB) return numA - numB;
+    return String(a.DadosDaNota).localeCompare(String(b.DadosDaNota));
+  });
+
   // Tabela Detalhada
   let htmlDetail = '<h3 style="margin-top:0; font-size:1.1em;">Dados Detalhados</h3>';
   htmlDetail += '<table style="width:100%; border-collapse:collapse; font-size:12px;">';
@@ -1071,6 +1083,16 @@ async function generateMinervaExcel(data){
     
     const products = calculateAggregation(group.items);
     const logisticsRaw = [...new Set(group.items.map(i => i.Logistica))];
+    const extractNFNumber = (text) => {
+      const match = text && text.match(/NF\s*([0-9]+)\s*-/i);
+      return match ? parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
+    };
+    logisticsRaw.sort((a, b) => {
+      const numA = extractNFNumber(a);
+      const numB = extractNFNumber(b);
+      if (numA !== numB) return numA - numB;
+      return String(a).localeCompare(String(b));
+    });
     const numProdRows = Math.max(1, products.length);
     const numLogRows = Math.max(1, Math.ceil(logisticsRaw.length / 2));
 
