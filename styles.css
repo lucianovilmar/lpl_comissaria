@@ -40,6 +40,9 @@ body{margin:0;color:var(--text);background:var(--bg)}
 .sidebar{width:200px;background:var(--sidebar-bg);border-right:1px solid var(--border);padding:16px}
 .nav-btn{display:block;width:100%;padding:10px;border:0;background:var(--btn-bg);margin-bottom:8px;cursor:pointer;border-radius:6px;text-align:left;color:var(--text)}
 .nav-btn.active{background:var(--btn-active-bg);color:var(--btn-active-color)}
+.nav-btn.green-test{background:#0d6a3c;color:#ffffff}
+.nav-btn.green-test.active{background:#0ba74b;color:#ffffff}
+.green-card{border-color:#0ba74b}
 .content{flex:1;padding:20px}
 .card{background:var(--card-bg);border:1px solid var(--border);padding:16px;border-radius:8px}
 .row{display:flex;gap:12px;align-items:center;margin-bottom:12px}

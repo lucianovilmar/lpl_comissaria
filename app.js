@@ -11,10 +11,15 @@ if(firstNavBtn && firstNavBtn.parentNode && !document.querySelector('[data-page=
 
 const navButtons = document.querySelectorAll('.nav-btn');
 const contentArea = document.getElementById('content-area');
+const greenAccessPassword = 'Luiggi9654';
+const greenTestSampleData = [
+  { id: 1, pedido:'0001', cliente:'Cliente A', cnpj:'12.345.678/0001-90', valor: 2450.50, status:'pendente' },
+  { id: 2, pedido:'0002', cliente:'Cliente B', cnpj:'98.765.432/0001-10', valor: 1780.75, status:'em processamento' }
+];
 
 // Alterar nome do botão Teste para Calculo de Itens
 navButtons.forEach(btn => {
-  if(btn.dataset.page !== 'due' && btn.dataset.page !== 'planilha') btn.textContent = 'Calculo de Itens';
+  if(btn.dataset.page === 'teste') btn.textContent = 'Calculo de Itens';
 });
 
 // Modo tema (padrão: dark)
@@ -35,7 +40,19 @@ if(themeToggle){
   });
 }
 
+function requestGreenAccess(){
+  const answer = prompt('Digite a senha para acessar o Green Teste:');
+  if(answer === null) return false;
+  if(answer.trim() === greenAccessPassword) return true;
+  alert('Senha incorreta. Acesso negado.');
+  return false;
+}
+
 navButtons.forEach(btn => btn.addEventListener('click', () => {
+  if(btn.dataset.page === 'green' && !requestGreenAccess()){
+    return;
+  }
+
   navButtons.forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   loadPage(btn.dataset.page);
@@ -44,6 +61,7 @@ navButtons.forEach(btn => btn.addEventListener('click', () => {
 function loadPage(page){
   if(page === 'due') renderDue();
   else if(page === 'planilha') renderPlanilha();
+  else if(page === 'green') renderGreenTest();
   else renderTeste();
 }
 
@@ -389,6 +407,81 @@ function renderTeste(){
     </div>
   `;
   attachTesteEvents();
+}
+
+function renderGreenTest(){
+  contentArea.innerHTML = `
+    <div class="card green-card">
+      <h2>Green Teste</h2>
+      <div class="row">
+        <div class="field" style="width:100%;">
+          <label>Descrição</label>
+          <div class="output" style="text-align:left;">
+            Esta é a área de teste para migração entre sistemas. A senha correta abre a página de exemplo e mostra o JSON de dados preparado para envio.
+          </div>
+        </div>
+      </div>
+      <div class="row" style="gap:12px; flex-wrap:wrap;">
+        <button id="btnShowJson" class="nav-btn active" style="margin:0; min-width:180px;">Mostrar JSON de Exemplo</button>
+        <button id="btnCopyJson" class="nav-btn" style="margin:0; min-width:180px;">Copiar JSON</button>
+        <button id="btnSimulateSend" class="nav-btn" style="margin:0; min-width:180px;">Simular Envio</button>
+      </div>
+      <div class="row">
+        <textarea id="greenJsonOutput" rows="12" readonly style="width:100%; box-sizing:border-box; padding:10px; border:1px solid #ccc; border-radius:8px; background:rgba(255,255,255,0.04);"></textarea>
+      </div>
+      <div class="row">
+        <div id="greenStatus" class="output" style="width:100%; text-align:left; min-height:48px;">
+          Status: pronto para preparar o JSON de migração.
+        </div>
+      </div>
+      <div class="row">
+        <div class="field" style="width:100%;">
+          <label>Próximos passos</label>
+          <div class="output" style="text-align:left;">
+            Quando o banco de dados estiver disponível, essa área será usada para montar o JSON final e enviar para a API do cliente.<br>
+            Veja a documentação do cliente aqui: <a href="https://documenter.getpostman.com/view/10967937/2s8YzNzis3#intro" target="_blank">Postman</a>.
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  attachGreenTestEvents();
+}
+
+function attachGreenTestEvents(){
+  const btnShowJson = document.getElementById('btnShowJson');
+  const btnCopyJson = document.getElementById('btnCopyJson');
+  const greenJsonOutput = document.getElementById('greenJsonOutput');
+  const sampleJson = JSON.stringify(greenTestSampleData, null, 2);
+
+  if(greenJsonOutput) greenJsonOutput.value = sampleJson;
+
+  if(btnShowJson){
+    btnShowJson.addEventListener('click', () => {
+      if(greenJsonOutput) greenJsonOutput.value = sampleJson;
+    });
+  }
+
+  if(btnCopyJson){
+    btnCopyJson.addEventListener('click', async () => {
+      if(!greenJsonOutput) return;
+      try {
+        await navigator.clipboard.writeText(greenJsonOutput.value);
+        alert('JSON copiado para a área de transferência.');
+      } catch (error) {
+        alert('Não foi possível copiar o JSON automaticamente.');
+      }
+    });
+  }
+
+  const btnSimulateSend = document.getElementById('btnSimulateSend');
+  const greenStatus = document.getElementById('greenStatus');
+  if(btnSimulateSend){
+    btnSimulateSend.addEventListener('click', () => {
+      if(greenStatus) greenStatus.textContent = 'Simulação: ainda não há acesso ao banco. Futuro envio para API do cliente.';
+      alert('Simulação concluída. Quando o banco estiver disponível, implementaremos o envio via API.');
+    });
+  }
 }
 
 function attachTesteEvents(){
