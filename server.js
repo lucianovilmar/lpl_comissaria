@@ -38,7 +38,7 @@ try {
   }
 }
 
-let cachedWorkbook = null;
+let cachedData = {};
 let cachedMtime = null;
 
 // Helper to convert Excel serial date to DD/MM/AAAA
@@ -56,8 +56,8 @@ function excelDateToDateString(excelSerial) {
   }
 }
 
-// Load workbook with file mtime caching and fallback project scanning
-function loadWorkbook() {
+// Load Excel data, convert sheets to simple JSON objects, and discard the Workbook to save memory
+function loadExcelData() {
   let targetPath = EXCEL_PATH;
   
   if (!fs.existsSync(targetPath)) {
@@ -77,25 +77,56 @@ function loadWorkbook() {
   
   const stats = fs.statSync(targetPath);
   const mtime = stats.mtimeMs;
-  if (!cachedWorkbook || cachedMtime !== mtime) {
+  
+  if (!cachedMtime || cachedMtime !== mtime || Object.keys(cachedData).length === 0) {
     console.log(`Carregando planilha de processos do Excel de: ${targetPath} (mtime: ${mtime})...`);
-    cachedWorkbook = XLSX.readFile(targetPath);
+    
+    // Read the file with minimal memory options
+    const wb = XLSX.readFile(targetPath, {
+      cellStyles: false,
+      cellFormulas: false,
+      cellHTML: false
+    });
+    
+    const abas = ["AGUARDANDO EMBARQUE", "DRAFT", "DUE", "RODOVIARIO", "USO MARFRIG"];
+    const newData = {};
+    const dataFields = ['ETA', 'ETS', 'DATA ESTUFAGEM', 'D/L Carga', 'D/L CARGA', 'D/L DRAFT', 'LIBERAÇÃO - BR', 'DATA REGISTRO', 'Chegada do CSI', 'Protocolado'];
+    
+    for (const name of abas) {
+      const sheet = wb.Sheets[name];
+      if (sheet) {
+        const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+        // Format dates immediately to optimize memory and CPU later
+        newData[name] = rows.map(row => {
+          const formattedRow = { ...row };
+          dataFields.forEach(f => {
+            if (formattedRow[f] && typeof formattedRow[f] === 'number') {
+              formattedRow[f] = excelDateToDateString(formattedRow[f]);
+            }
+          });
+          return formattedRow;
+        });
+      } else {
+        newData[name] = [];
+      }
+    }
+    
+    cachedData = newData;
     cachedMtime = mtime;
+    console.log("Planilha carregada e convertida para JSON de baixo consumo de RAM. Workbook liberado da memória.");
   }
-  return cachedWorkbook;
+  return cachedData;
 }
 
 // Lookup booking code for a container code in the Excel sheet
 function findBookingForContainer(containerCode) {
   try {
-    const wb = loadWorkbook();
+    const data = loadExcelData();
     const abas = ["AGUARDANDO EMBARQUE", "DRAFT", "DUE", "USO MARFRIG"];
     const code = containerCode.trim().toUpperCase();
     
     for (const name of abas) {
-      const sheet = wb.Sheets[name];
-      if (!sheet) continue;
-      const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+      const rows = data[name] || [];
       for (const row of rows) {
         const containerVal = String(row['CONTAINER'] || row['Container'] || '').trim().toUpperCase();
         if (containerVal === code) {
@@ -113,26 +144,12 @@ function findBookingForContainer(containerCode) {
 }
 
 function getProcessosData(abaName) {
-  const wb = loadWorkbook();
-  const sheet = wb.Sheets[abaName];
-  if (!sheet) {
+  const data = loadExcelData();
+  const rows = data[abaName];
+  if (!rows) {
     throw new Error(`Aba "${abaName}" não encontrada no arquivo do Excel.`);
   }
-  
-  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-  
-  // Lista de campos comuns que são datas no Excel e devem ser convertidas
-  const dataFields = ['ETA', 'ETS', 'DATA ESTUFAGEM', 'D/L Carga', 'D/L CARGA', 'D/L DRAFT', 'LIBERAÇÃO - BR', 'DATA REGISTRO', 'Chegada do CSI', 'Protocolado'];
-  
-  return rows.map(row => {
-    const formattedRow = { ...row };
-    dataFields.forEach(f => {
-      if (formattedRow[f] && typeof formattedRow[f] === 'number') {
-        formattedRow[f] = excelDateToDateString(formattedRow[f]);
-      }
-    });
-    return formattedRow;
-  });
+  return rows;
 }
 
 // Helper to read JSON body
@@ -353,17 +370,11 @@ const server = http.createServer(async (req, res) => {
   // Endpoint 3: GET /api/processos/summary
   if (reqPath === '/api/processos/summary' && req.method === 'GET') {
     try {
-      const wb = loadWorkbook();
+      const data = loadExcelData();
       const summary = {};
       const keyAbas = ["AGUARDANDO EMBARQUE", "DRAFT", "DUE", "RODOVIARIO", "USO MARFRIG"];
       keyAbas.forEach(aba => {
-        const sheet = wb.Sheets[aba];
-        if (sheet) {
-          const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-          summary[aba] = rows.length;
-        } else {
-          summary[aba] = 0;
-        }
+        summary[aba] = (data[aba] || []).length;
       });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(summary));
