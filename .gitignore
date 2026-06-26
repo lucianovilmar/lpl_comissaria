@@ -6,5 +6,6 @@ dist/
 build/
 .idea/
 .vscode/
+.cache/
 # Cookies de Sessão dos Portos
 *cookies.json
