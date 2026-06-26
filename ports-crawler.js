@@ -27,17 +27,42 @@ function resetTcpIdleTimer() {
   }, 120000); // 2 minutos de inatividade
 }
 
-// Helper to find Google Chrome path on Windows
+// Helper to find Google Chrome path on Windows and Linux (Render)
 function getChromePath() {
-  const paths = [
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-    path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe')
-  ].filter(Boolean);
-  for (const p of paths) {
-    if (fs.existsSync(p)) return p;
+  if (process.platform === 'win32') {
+    const paths = [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe')
+    ].filter(Boolean);
+    for (const p of paths) {
+      if (fs.existsSync(p)) return p;
+    }
+    return null;
+  } else {
+    // Linux/Render paths
+    const linuxPaths = [
+      '/usr/bin/google-chrome',
+      '/usr/bin/google-chrome-stable',
+      '/usr/bin/chromium',
+      '/usr/bin/chromium-browser',
+      '/app/.apt/usr/bin/google-chrome',
+      '/app/.apt/usr/bin/google-chrome-stable',
+      '/app/.chrome-linux/chrome-linux/chrome'
+    ];
+    for (const p of linuxPaths) {
+      if (fs.existsSync(p)) return p;
+    }
+    try {
+      const { execSync } = require('child_process');
+      const pathCmd = execSync('which google-chrome || which google-chrome-stable || which chromium || which chromium-browser', { encoding: 'utf8' }).trim();
+      if (pathCmd && fs.existsSync(pathCmd)) {
+        return pathCmd;
+      }
+    } catch (e) {}
+    
+    return '/usr/bin/google-chrome'; // Fallback padrão
   }
-  return null;
 }
 
 function saveCookies(cookies, filePath) {
