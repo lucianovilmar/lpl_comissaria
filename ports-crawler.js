@@ -195,22 +195,29 @@ async function queryTCP(containerCode) {
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
       page.setDefaultTimeout(120000);
 
-      if (savedCookies) {
-        await page.setCookie(...savedCookies);
-        console.log('TCP: Cookies de sessão carregados.');
-      }
-
       try {
-        console.log('TCP: Navegando de forma invisível...');
+        console.log('TCP: Navegando para página inicial para estabelecer sessão WAF...');
+        await page.goto('https://portal.tcp.com.br/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+        if (savedCookies) {
+          await page.setCookie(...savedCookies);
+          console.log('TCP: Cookies de sessão aplicados.');
+        }
+
+        console.log('TCP: Navegando de forma invisível para área de consulta...');
         await page.goto('https://portal.tcp.com.br/consulta-geral/conteineres', { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-        const needsLogin = await page.evaluate(() => {
-          return document.querySelector('input[type="password"]') !== null || !window.location.href.includes('consulta-geral');
-        });
+        console.log('TCP: Aguardando carregamento da página ou redirecionamento de login...');
+        const resolvedSelector = await Promise.race([
+          page.waitForSelector('input#search', { timeout: 15000 }).then(() => 'search'),
+          page.waitForSelector('input[type="password"]', { timeout: 15000 }).then(() => 'login'),
+        ]);
 
-        if (needsLogin) {
+        if (resolvedSelector === 'login') {
           throw new Error('Sessão expirada ou redirecionado para login');
         }
+
+        console.log('TCP: Autenticação silenciosa bem sucedida!');
       } catch (gotoErr) {
         console.log('TCP: Falha na autenticação silenciosa (headless):', gotoErr.message);
         try {
@@ -279,20 +286,37 @@ async function queryTCP(containerCode) {
         await page.goto('https://portal.tcp.com.br/consulta-geral/conteineres', { waitUntil: 'domcontentloaded', timeout: 30000 });
       }
 
+      // Aguardar a renderização inicial dos bindings do Angular
+      console.log('TCP: Aguardando estabilização dos bindings do Angular (3s)...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
       // Garantir a seleção da empresa MARFRIG no cabeçalho
       const isCompanySelected = await page.evaluate(() => {
         const header = document.querySelector('header') || document.querySelector('.header') || document.body;
-        return header && (header.innerText.includes('03.853.896/0003-01') || header.innerText.includes('MARFRIG'));
+        const text = header ? (header.textContent || '') : '';
+        return text.includes('03.853.896/0003-01') || text.includes('MARFRIG');
       });
 
       if (!isCompanySelected) {
         console.log('TCP: Selecionando MARFRIG CNPJ 03.853.896/0003-01 no cabeçalho...');
         try {
-          await page.waitForSelector('[angularticsaction="Abrir Seleção Empresa"]', { timeout: 15000 });
-          await page.evaluate(() => {
-            const el = document.querySelector('[angularticsaction="Abrir Seleção Empresa"]');
-            if (el) el.click();
+          const combinedSelector = '[angularticsaction="Abrir Seleção Empresa"], [angularticsaction="Abrir Seleção de Procuração"]';
+          await page.waitForSelector(combinedSelector, { timeout: 15000 });
+
+          const companySelector = await page.evaluate(() => {
+            if (document.querySelector('[angularticsaction="Abrir Seleção Empresa"]')) return '[angularticsaction="Abrir Seleção Empresa"]';
+            if (document.querySelector('[angularticsaction="Abrir Seleção de Procuração"]')) return '[angularticsaction="Abrir Seleção de Procuração"]';
+            return null;
           });
+
+          if (!companySelector) {
+            throw new Error('Botão de seleção de empresa/procuração não localizado no cabeçalho.');
+          }
+
+          await page.evaluate((sel) => {
+            const el = document.querySelector(sel);
+            if (el) el.click();
+          }, companySelector);
           
           await page.waitForSelector('input[formcontrolname="filtro"]', { timeout: 15000 });
           await page.evaluate(() => {
@@ -307,23 +331,22 @@ async function queryTCP(containerCode) {
           await new Promise(resolve => setTimeout(resolve, 3000));
           
           await page.evaluate(() => {
-            const elements = Array.from(document.querySelectorAll('*'));
+            const selectors = [
+              'li',
+              '.mat-list-item',
+              '.empresa-dados',
+              '[angularticsaction="Procuracao Selecionada"]',
+              '[angularticsaction="Empresa Selecionada"]',
+              'span'
+            ];
+            const elements = Array.from(document.querySelectorAll(selectors.join(',')));
             const target = elements.find(el => {
-              const text = el.innerText || '';
-              return text.includes('03.853.896/0003-01') && (
-                el.tagName === 'LI' || 
-                el.classList.contains('mat-list-item') || 
-                el.classList.contains('empresa-dados') || 
-                el.getAttribute('angularticsaction') === 'Procuracao Selecionada' || 
-                el.getAttribute('angularticsaction') === 'Empresa Selecionada'
-              );
+              const text = el.textContent || '';
+              return text.includes('03.853.896/0003-01');
             });
             if (target) {
               target.click();
-              return;
             }
-            const fallback = Array.from(document.querySelectorAll('span')).find(s => s.innerText.includes('03.853.896/0003-01'));
-            if (fallback) fallback.click();
           });
           
           await new Promise(resolve => setTimeout(resolve, 5000));
@@ -380,7 +403,7 @@ async function queryTCP(containerCode) {
     let hasResults = false;
     try {
       await page.waitForFunction(() => {
-        const text = document.body.innerText;
+        const text = document.body.textContent || '';
         const sideTable = document.querySelector('app-conteiner-side-table');
         const hasContainer = sideTable && sideTable.querySelector('a') !== null;
         const noResults = text.includes('Não foi possível encontrar') || 
@@ -421,23 +444,23 @@ async function queryTCP(containerCode) {
       const steps = {};
       const labels = ['Entrada', 'Aduaneiro', 'Embarque', 'Faturamento'];
       
+      const candidateElements = Array.from(document.querySelectorAll('span, div, p, td, th, mat-step, .mat-step'));
       labels.forEach(label => {
-        const els = Array.from(document.querySelectorAll('*'));
-        const el = els.find(e => e.childNodes.length === 1 && e.textContent.trim() === label);
+        const el = candidateElements.find(e => e.childNodes.length === 1 && e.textContent.trim() === label);
         if (el) {
           let date = '-';
           let state = 'pending'; // 'completed', 'active', 'pending'
           
           const parent = el.parentElement;
           if (parent) {
-            const text = parent.innerText || '';
+            const text = parent.textContent || '';
             const dateMatch = text.match(/([0-9]{2}\/[0-9]{2}\/[0-9]{4}\s+[0-9]{2}:[0-9]{2})/);
             if (dateMatch) {
               date = dateMatch[1];
             } else {
               const sibling = el.nextElementSibling;
               if (sibling) {
-                const dateMatch2 = sibling.innerText.match(/([0-9]{2}\/[0-9]{2}\/[0-9]{4}\s+[0-9]{2}:[0-9]{2})/);
+                const dateMatch2 = sibling.textContent.match(/([0-9]{2}\/[0-9]{2}\/[0-9]{4}\s+[0-9]{2}:[0-9]{2})/);
                 if (dateMatch2) date = dateMatch2[1];
               }
             }
@@ -538,21 +561,21 @@ async function queryTCP(containerCode) {
 
       const timeline = {};
       const timelineLabels = ['Agendamento', 'SAV', 'Entrada Gate', 'Operação', 'Saída Gate'];
+      const candidateElements = Array.from(document.querySelectorAll('span, div, p, td, th'));
       timelineLabels.forEach(label => {
-        const els = Array.from(document.querySelectorAll('*'));
-        const el = els.find(e => e.childNodes.length === 1 && e.textContent.trim() === label);
+        const el = candidateElements.find(e => e.childNodes.length === 1 && e.textContent.trim() === label);
         if (el) {
           let date = '-';
           let parent = el.parentElement;
           if (parent) {
-            const parentText = parent.innerText;
+            const parentText = parent.textContent || '';
             const dateMatch = parentText.match(/([0-9]{2}\/[0-9]{2}\/[0-9]{4}\s+[0-9]{2}:[0-9]{2})/);
             if (dateMatch) {
               date = dateMatch[1];
             } else {
               const sibling = el.nextElementSibling;
               if (sibling) {
-                const dateMatch2 = sibling.innerText.match(/([0-9]{2}\/[0-9]{2}\/[0-9]{4}\s+[0-9]{2}:[0-9]{2})/);
+                const dateMatch2 = sibling.textContent.match(/([0-9]{2}\/[0-9]{2}\/[0-9]{4}\s+[0-9]{2}:[0-9]{2})/);
                 if (dateMatch2) date = dateMatch2[1];
               }
             }
