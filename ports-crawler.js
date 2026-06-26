@@ -1,6 +1,15 @@
 const fs = require('fs');
 const path = require('path');
 
+let puppeteer;
+try {
+  puppeteer = require('puppeteer');
+} catch (e) {
+  try {
+    puppeteer = require('puppeteer-core');
+  } catch (err) {}
+}
+
 const COOKIES_PATH_TCP = path.join(__dirname, 'tcp-cookies.json');
 const COOKIES_PATH_POA = path.join(__dirname, 'poa-cookies.json');
 const COOKIES_PATH_NAV = path.join(__dirname, 'nav-cookies.json');
@@ -61,7 +70,7 @@ function getChromePath() {
       }
     } catch (e) {}
     
-    return '/usr/bin/google-chrome'; // Fallback padrão
+    return null; // Let Puppeteer handle finding/downloading the browser on non-Windows platforms
   }
 }
 
@@ -106,17 +115,11 @@ async function queryTCP(containerCode) {
     };
   }
 
-  let puppeteer;
-  try {
-    puppeteer = require('puppeteer-core');
-  } catch (e) {
+  if (!puppeteer) {
     return { error: 'erro api', message: 'Módulo de automação indisponível. Instale as dependências.' };
   }
 
   const chromePath = getChromePath();
-  if (!chromePath) {
-    return { error: 'erro api', message: 'Navegador Chrome não localizado no servidor' };
-  }
 
   // Cancelar temporizador de fechamento por inatividade
   if (tcpIdleTimer) {
@@ -173,8 +176,7 @@ async function queryTCP(containerCode) {
       let shouldRunVisibleLogin = false;
 
       console.log('TCP: Abrindo nova instância do navegador...');
-      browser = await puppeteer.launch({
-        executablePath: chromePath,
+      const launchOptions = {
         headless: true,
         defaultViewport: null,
         args: [
@@ -183,7 +185,11 @@ async function queryTCP(containerCode) {
           '--disable-web-security',
           '--disable-features=IsolateOrigins,site-per-process'
         ]
-      });
+      };
+      if (chromePath) {
+        launchOptions.executablePath = chromePath;
+      }
+      browser = await puppeteer.launch(launchOptions);
 
       page = await browser.newPage();
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -217,11 +223,15 @@ async function queryTCP(containerCode) {
 
       // Se falhar de forma invisível (anti-bot bloqueando), abre janela visível para intervenção e login único
       if (shouldRunVisibleLogin) {
+        if (process.platform !== 'win32') {
+          console.log('TCP: Cookies expirados em ambiente sem interface gráfica (Linux). Por favor, use o Bookmarklet de sincronização.');
+          throw new Error('Sessão expirada. Use o Sincronizador de 1 Clique no seu navegador para atualizar os cookies.');
+        }
+
         console.log('TCP: Abrindo navegador visível para autenticação e reCAPTCHA...');
         await browser.close();
 
-        browser = await puppeteer.launch({
-          executablePath: chromePath,
+        const launchOptionsHeadful = {
           headless: false,
           defaultViewport: { width: 1280, height: 800 },
           args: [
@@ -230,7 +240,11 @@ async function queryTCP(containerCode) {
             '--disable-web-security',
             '--disable-features=IsolateOrigins,site-per-process'
           ]
-        });
+        };
+        if (chromePath) {
+          launchOptionsHeadful.executablePath = chromePath;
+        }
+        browser = await puppeteer.launch(launchOptionsHeadful);
 
         page = await browser.newPage();
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -626,25 +640,24 @@ async function queryPOA(containerCode, bookingCode) {
     }
   }
 
-  let puppeteer;
-  try {
-    puppeteer = require('puppeteer-core');
-  } catch (e) {
+  if (!puppeteer) {
     return { error: 'erro api', message: 'Módulo de automação indisponível.' };
   }
 
   const chromePath = getChromePath();
-  if (!chromePath) return { error: 'erro api', message: 'Navegador Chrome não localizado.' };
 
   let browser;
   try {
     const savedCookies = loadCookies(COOKIES_PATH_POA);
-    browser = await puppeteer.launch({
-      executablePath: chromePath,
+    const launchOptions = {
       headless: true,
       defaultViewport: null,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-web-security']
-    });
+    };
+    if (chromePath) {
+      launchOptions.executablePath = chromePath;
+    }
+    browser = await puppeteer.launch(launchOptions);
 
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -785,25 +798,24 @@ async function queryNAV(containerCode) {
     };
   }
 
-  let puppeteer;
-  try {
-    puppeteer = require('puppeteer-core');
-  } catch (e) {
+  if (!puppeteer) {
     return { error: 'erro api', message: 'Módulo de automação indisponível.' };
   }
 
   const chromePath = getChromePath();
-  if (!chromePath) return { error: 'erro api', message: 'Navegador Chrome não localizado.' };
 
   let browser;
   try {
     const savedCookies = loadCookies(COOKIES_PATH_NAV);
-    browser = await puppeteer.launch({
-      executablePath: chromePath,
+    const launchOptions = {
       headless: true,
       defaultViewport: null,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-web-security']
-    });
+    };
+    if (chromePath) {
+      launchOptions.executablePath = chromePath;
+    }
+    browser = await puppeteer.launch(launchOptions);
 
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -946,15 +958,11 @@ async function queryTEC(containerCode) {
     };
   }
 
-  let puppeteer;
-  try {
-    puppeteer = require('puppeteer-core');
-  } catch (e) {
+  if (!puppeteer) {
     return { error: 'erro api', message: 'Módulo de automação indisponível.' };
   }
 
   const chromePath = getChromePath();
-  if (!chromePath) return { error: 'erro api', message: 'Navegador Chrome não localizado.' };
 
   let browser;
   let page;
@@ -963,12 +971,15 @@ async function queryTEC(containerCode) {
   try {
     const savedCookies = loadCookies(COOKIES_PATH_TEC);
     
-    browser = await puppeteer.launch({
-      executablePath: chromePath,
+    const launchOptions = {
       headless: true,
       defaultViewport: null,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-web-security']
-    });
+    };
+    if (chromePath) {
+      launchOptions.executablePath = chromePath;
+    }
+    browser = await puppeteer.launch(launchOptions);
 
     page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -1061,16 +1072,23 @@ async function queryTEC(containerCode) {
         autoSuccess = true;
       } catch (autoErr) {
         console.log('Teconline: Falha no login automático headless:', autoErr.message);
+        if (process.platform !== 'win32') {
+          console.log('Teconline: Falha no login automático em ambiente Linux/Render.');
+          throw new Error('Falha no login automático (Teconline). Por favor, atualize os cookies da Teconline.');
+        }
         console.log('Teconline: Iniciando fluxo de fallback visível (headful)...');
         
         await browser.close();
 
-        browser = await puppeteer.launch({
-          executablePath: chromePath,
+        const launchOptionsHeadful = {
           headless: false,
           defaultViewport: { width: 1280, height: 800 },
           args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-web-security']
-        });
+        };
+        if (chromePath) {
+          launchOptionsHeadful.executablePath = chromePath;
+        }
+        browser = await puppeteer.launch(launchOptionsHeadful);
 
         page = await browser.newPage();
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
