@@ -21,11 +21,21 @@ const mime = {
 
 const DOWNLOADS_EXCEL_PATH = 'C:\\Users\\LVS 06 Dev\\Downloads\\Gestão de Processos - MARFRIG x DESPACHANTES.xlsx';
 const LOCAL_EXCEL_NAME = 'Gestão de Processos - MARFRIG x DESPACHANTES.xlsx';
-const PROJECT_EXCEL_PATH = path.join(__dirname, LOCAL_EXCEL_NAME);
+let EXCEL_PATH = path.join(__dirname, LOCAL_EXCEL_NAME);
 
-let EXCEL_PATH = DOWNLOADS_EXCEL_PATH;
-if (fs.existsSync(PROJECT_EXCEL_PATH)) {
-  EXCEL_PATH = PROJECT_EXCEL_PATH;
+// Resolver o caminho do Excel dinamicamente com prioridade para a pasta do projeto
+try {
+  const files = fs.readdirSync(__dirname);
+  const matchedFile = files.find(f => f.toLowerCase().endsWith('.xlsx') && f.toLowerCase().includes('gest') && !f.startsWith('~$'));
+  if (matchedFile) {
+    EXCEL_PATH = path.join(__dirname, matchedFile);
+  } else if (!fs.existsSync(EXCEL_PATH) && fs.existsSync(DOWNLOADS_EXCEL_PATH)) {
+    EXCEL_PATH = DOWNLOADS_EXCEL_PATH;
+  }
+} catch (e) {
+  if (fs.existsSync(DOWNLOADS_EXCEL_PATH)) {
+    EXCEL_PATH = DOWNLOADS_EXCEL_PATH;
+  }
 }
 
 let cachedWorkbook = null;

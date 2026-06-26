@@ -1,7 +1,14 @@
 const XLSX = require('xlsx');
 const fs = require('fs');
 
-const filePath = 'C:\\Users\\LVS 06 Dev\\Downloads\\Gestão de Processos - MARFRIG x DESPACHANTES.xlsx';
+const path = require('path');
+const DOWNLOADS_EXCEL_PATH = 'C:\\Users\\LVS 06 Dev\\Downloads\\Gestão de Processos - MARFRIG x DESPACHANTES.xlsx';
+const LOCAL_EXCEL_NAME = 'Gestão de Processos - MARFRIG x DESPACHANTES.xlsx';
+let filePath = path.join(__dirname, LOCAL_EXCEL_NAME);
+
+if (!fs.existsSync(filePath) && fs.existsSync(DOWNLOADS_EXCEL_PATH)) {
+  filePath = DOWNLOADS_EXCEL_PATH;
+}
 
 function excelDateToDateString(excelSerial) {
   if (!excelSerial || isNaN(excelSerial)) return excelSerial;
