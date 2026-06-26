@@ -181,9 +181,7 @@ async function queryTCP(containerCode) {
         defaultViewport: null,
         args: [
           '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-web-security',
-          '--disable-features=IsolateOrigins,site-per-process'
+          '--disable-setuid-sandbox'
         ]
       };
       if (chromePath) {
@@ -192,6 +190,22 @@ async function queryTCP(containerCode) {
       browser = await puppeteer.launch(launchOptions);
 
       page = await browser.newPage();
+      
+      // Evasão de detecção headless (Bypass WAF/Imperva anti-bot)
+      await page.evaluateOnNewDocument(() => {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        window.chrome = {
+          app: {
+            isInstalled: false,
+            InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
+            RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' }
+          },
+          runtime: {}
+        };
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en-US', 'en'] });
+      });
+
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
       page.setDefaultTimeout(120000);
 
@@ -215,10 +229,20 @@ async function queryTCP(containerCode) {
         await page.goto('https://portal.tcp.com.br/consulta-geral/conteineres', { waitUntil: 'domcontentloaded', timeout: 30000 });
 
         console.log('TCP: Aguardando carregamento da página ou redirecionamento de login...');
-        const resolvedSelector = await Promise.race([
-          page.waitForSelector('input#search', { timeout: 30000 }).then(() => 'search'),
-          page.waitForSelector('input[type="password"]', { timeout: 30000 }).then(() => 'login'),
-        ]);
+        let resolvedSelector = null;
+        for (let i = 0; i < 60; i++) {
+          resolvedSelector = await page.evaluate(() => {
+            if (document.querySelector('input#search')) return 'search';
+            if (document.querySelector('input[type="password"]')) return 'login';
+            return null;
+          });
+          if (resolvedSelector) break;
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        if (!resolvedSelector) {
+          throw new Error('Timeout aguardando carregamento da página de consulta');
+        }
 
         if (resolvedSelector === 'login') {
           throw new Error('Sessão expirada ou redirecionado para login');
@@ -311,7 +335,15 @@ async function queryTCP(containerCode) {
         console.log('TCP: Selecionando MARFRIG CNPJ 03.853.896/0003-01 no cabeçalho...');
         try {
           const combinedSelector = '[angularticsaction="Abrir Seleção Empresa"], [angularticsaction="Abrir Seleção de Procuração"]';
-          await page.waitForSelector(combinedSelector, { timeout: 15000 });
+          let exists = false;
+          for (let i = 0; i < 30; i++) {
+            exists = await page.evaluate((sel) => document.querySelector(sel) !== null, combinedSelector);
+            if (exists) break;
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+          if (!exists) {
+            throw new Error('Botão de seleção de empresa/procuração não apareceu no cabeçalho.');
+          }
 
           const companySelector = await page.evaluate(() => {
             if (document.querySelector('[angularticsaction="Abrir Seleção Empresa"]')) return '[angularticsaction="Abrir Seleção Empresa"]';
@@ -328,7 +360,15 @@ async function queryTCP(containerCode) {
             if (el) el.click();
           }, companySelector);
           
-          await page.waitForSelector('input[formcontrolname="filtro"]', { timeout: 15000 });
+          let filterExists = false;
+          for (let i = 0; i < 30; i++) {
+            filterExists = await page.evaluate(() => document.querySelector('input[formcontrolname="filtro"]') !== null);
+            if (filterExists) break;
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+          if (!filterExists) {
+            throw new Error('Campo de filtro não apareceu no modal de empresas.');
+          }
           await page.evaluate(() => {
             const input = document.querySelector('input[formcontrolname="filtro"]');
             if (input) {
@@ -361,13 +401,6 @@ async function queryTCP(containerCode) {
           
           await new Promise(resolve => setTimeout(resolve, 5000));
           
-          console.log('TCP: Retornando à página de consulta de contêineres...');
-          try {
-            await page.goto('https://portal.tcp.com.br/consulta-geral/conteineres', { waitUntil: 'domcontentloaded', timeout: 30000 });
-          } catch (gotoErr) {
-            console.log('TCP: Timeout ou aviso ao retornar para página de consulta, prosseguindo...');
-          }
-          
           const cookies = await page.cookies();
           saveCookies(cookies, COOKIES_PATH_TCP);
           console.log('TCP: Cookies atualizados após seleção de empresa.');
@@ -391,13 +424,22 @@ async function queryTCP(containerCode) {
     }
 
     const searchInputSelector = 'input#search';
-    await page.waitForSelector(searchInputSelector, { timeout: 15000 });
+    let searchExists = false;
+    for (let i = 0; i < 30; i++) {
+      searchExists = await page.evaluate((sel) => document.querySelector(sel) !== null, searchInputSelector);
+      if (searchExists) break;
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    if (!searchExists) {
+      throw new Error('Campo de busca input#search não localizado na página.');
+    }
     
     if (!isReused) {
       console.log('TCP: Aguardando estabilização dos bindings do Angular (2.5s)...');
       await new Promise(resolve => setTimeout(resolve, 2500));
     }
     
+    console.log('TCP: Preenchendo campo de busca com ' + containerCode + '...');
     await page.evaluate((sel, code) => {
       const input = document.querySelector(sel);
       if (input) {
@@ -408,29 +450,41 @@ async function queryTCP(containerCode) {
       const btn = document.querySelector('button.submit-button');
       if (btn) btn.click();
     }, searchInputSelector, containerCode);
+    console.log('TCP: Botão de busca clicado.');
 
     // Esperar a tabela lateral com resultados ou mensagem de "não encontrado"
     let hasResults = false;
     try {
-      await page.waitForFunction(() => {
-        const text = document.body.textContent || '';
-        const sideTable = document.querySelector('app-conteiner-side-table');
-        const hasContainer = sideTable && sideTable.querySelector('a') !== null;
-        const noResults = text.includes('Não foi possível encontrar') || 
-                           text.includes('Nenhum contêiner') || 
-                           text.includes('Não encontrado') || 
-                           text.includes('Nenhum registro');
-        return hasContainer || noResults;
-      }, { timeout: 15000 });
+      let isFinished = false;
+      for (let i = 0; i < 30; i++) {
+        console.log('TCP: Aguardando resultados, tentativa ' + (i + 1) + '/30...');
+        const state = await page.evaluate(() => {
+          const text = document.body.textContent || '';
+          const sideTable = document.querySelector('app-conteiner-side-table');
+          const hasContainer = sideTable && sideTable.querySelector('a') !== null;
+          const noResults = text.includes('Não foi possível encontrar') || 
+                             text.includes('Nenhum contêiner') || 
+                             text.includes('Não encontrado') || 
+                             text.includes('Nenhum registro');
+          return { finished: hasContainer || noResults, success: hasContainer };
+        });
+        
+        if (state.finished) {
+          hasResults = state.success;
+          isFinished = true;
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
       
-      hasResults = await page.evaluate(() => {
-        const sideTable = document.querySelector('app-conteiner-side-table');
-        return sideTable && sideTable.querySelector('a') !== null;
-      });
+      if (!isFinished) {
+        throw new Error('Timeout aguardando os resultados da busca');
+      }
     } catch (e) {
       console.log('TCP: Timeout aguardando resultados do contêiner ' + containerCode);
     }
 
+    console.log('TCP: Resultados localizados? ' + hasResults);
     if (!hasResults) {
       // Agenda o temporizador de fechamento por inatividade e retorna null
       resetTcpIdleTimer();
@@ -439,14 +493,25 @@ async function queryTCP(containerCode) {
 
     // Clicar no link do contêiner na tabela lateral para exibir os detalhes
     console.log('TCP: Clicando no contêiner na tabela lateral...');
-    await page.click('app-conteiner-side-table a');
+    await page.evaluate(() => {
+      const el = document.querySelector('app-conteiner-side-table a');
+      if (el) el.click();
+    });
     await new Promise(resolve => setTimeout(resolve, 3000));
 
     // Garantir que as abas de detalhes carregaram
     try {
-      await page.waitForSelector('.mat-tab-label, [role="tab"]', { timeout: 10000 });
+      let tabsExists = false;
+      for (let i = 0; i < 20; i++) {
+        tabsExists = await page.evaluate(() => document.querySelector('.mat-tab-label, [role="tab"]') !== null);
+        if (tabsExists) break;
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      if (!tabsExists) {
+        console.log('TCP: Abas não localizadas na página de detalhes.');
+      }
     } catch (e) {
-      console.log('TCP: Abas não localizadas na página de detalhes.');
+      console.log('TCP: Erro ao aguardar abas de detalhes.');
     }
 
     // 1. Extrair Stepper de Progresso (Entrada, Aduaneiro, Embarque, Faturamento)
