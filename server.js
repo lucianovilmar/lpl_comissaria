@@ -119,6 +119,17 @@ function readJsonBody(req) {
 }
 
 const server = http.createServer(async (req, res) => {
+  // CORS Support
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204); // 204 No Content
+    res.end();
+    return;
+  }
+
   const parsedUrl = url.parse(req.url, true);
   const reqPath = decodeURIComponent(parsedUrl.pathname);
 

@@ -1366,6 +1366,9 @@ function renderLplPlanilhaDashboard(username){
           <span style="font-weight: 500; font-size: 16px; color: var(--text);">Usuário: <strong>${username}</strong></span>
         </div>
         <div style="display: flex; align-items: center; gap: 12px;">
+          <button id="lplBookmarkletBtn" class="nav-btn" style="margin: 0; width: auto; font-size: 13px; padding: 6px 12px; background: rgba(188, 152, 85, 0.1); color: #bc9855; border: 1px solid rgba(188, 152, 85, 0.2); border-radius: 6px; display: inline-flex; align-items: center; gap: 6px;">
+            🔗 Sincronizador 1 Clique
+          </button>
           <label class="nav-btn" style="margin: 0; width: auto; font-size: 13px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.02); color: var(--text);">
             🔑 Importar Cookies TCP
             <input type="file" id="lplCookieUploadInput" accept=".json" style="display: none;">
@@ -1783,6 +1786,12 @@ function renderLplPlanilhaDashboard(username){
         reader.readAsText(file);
       });
     }
+
+    // Handler para abrir modal do bookmarklet
+    const bookmarkletBtn = document.getElementById('lplBookmarkletBtn');
+    if (bookmarkletBtn) {
+      bookmarkletBtn.addEventListener('click', showBookmarkletModal);
+    }
   }
 }
 
@@ -2114,6 +2123,67 @@ window.reSearchContainer = function(containerCode, port) {
     searchBtn.click();
   }
 };
+
+function showBookmarkletModal() {
+  const existing = document.getElementById('lplBookmarkletModal');
+  if (existing) {
+    existing.style.display = 'flex';
+    return;
+  }
+  
+  const origin = window.location.origin;
+  const jsCode = `javascript:(async()=>{const t=document.cookie.split("; ").find(c=>c.startsWith("access_token_portal="));if(!t){alert("Erro: Login do TCP não localizado. Faça login no portal do TCP primeiro!");return}const v=t.split("=")[1];const cookiesArray=document.cookie.split("; ").map(c=>{const p=c.split("=");return{name:p[0].trim(),value:p.slice(1).join("="),domain:".tcp.com.br",path:"/"}});try{const res=await fetch("${origin}/api/upload-cookies",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"tcp",cookies:cookiesArray})});const d=await res.json();if(res.ok&&d.success){alert("Cookies do TCP sincronizados com sucesso!")}else{alert("Erro ao importar: "+(d.error||"Erro no servidor"))}}catch(err){alert("Erro ao enviar para o servidor: "+err.message)}})();`;
+
+  const modal = document.createElement('div');
+  modal.id = 'lplBookmarkletModal';
+  modal.style = `
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(5px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    transition: all 0.3s ease;
+  `;
+  
+  modal.innerHTML = `
+    <div class="card" style="max-width: 500px; padding: 28px; border: 1px solid var(--border); background: var(--card-bg); border-radius: 12px; position: relative; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
+      <button onclick="document.getElementById('lplBookmarkletModal').style.display='none'" style="position: absolute; top: 12px; right: 12px; background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; outline: none;">✕</button>
+      <h3 style="margin-top: 0; margin-bottom: 16px; color: var(--text);">Sincronizador de 1 Clique — TCP</h3>
+      <p style="color: var(--muted); font-size: 14px; line-height: 1.5; margin-bottom: 20px;">
+        Esta é a forma mais prática para qualquer usuário sincronizar a sessão do TCP com a nuvem sem precisar baixar arquivos ou mexer em código!
+      </p>
+      
+      <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <span style="font-weight: bold; color: var(--text); font-size: 13px; display: block; margin-bottom: 8px;">Como Usar:</span>
+        <ol style="color: var(--muted); font-size: 13px; margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; text-align: left;">
+          <li>
+            <strong>Arraste o botão dourado abaixo</strong> para a sua barra de favoritos do navegador.
+          </li>
+          <li>
+            Acesse o portal da TCP em <a href="https://portal.tcp.com.br" target="_blank" style="color: #bc9855; text-decoration: underline;">portal.tcp.com.br</a> e faça login (com a empresa Marfrig selecionada).
+          </li>
+          <li>
+            Dentro do portal da TCP, clique no favorito <strong>"Sincronizar TCP"</strong> na sua barra de favoritos.
+          </li>
+          <li>
+            Pronto! A sessão da nuvem será atualizada na mesma hora e você verá o aviso de sucesso.
+          </li>
+        </ol>
+      </div>
+      
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 16px;">
+        <a href='${jsCode}' class="nav-btn active" style="margin: 0; display: inline-flex; align-items: center; gap: 6px; font-weight: bold; padding: 12px 24px; cursor: move; border-radius: 6px;" title="Arraste para sua barra de favoritos" onclick="event.preventDefault(); alert('Não clique aqui. Arraste este botão para a sua barra de favoritos do navegador!');">
+          🔗 Sincronizar TCP
+        </a>
+        <span style="font-size: 11px; color: var(--muted); text-align: center;">Dica: Clique e segure no botão acima, e solte-o na sua barra de favoritos (pressione Ctrl+Shift+B se ela não estiver visível).</span>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
 
 // ==========================================
 // FUNÇÕES PARA GESTÃO DE PROCESSOS
