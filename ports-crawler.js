@@ -200,8 +200,15 @@ async function queryTCP(containerCode) {
         await page.goto('https://portal.tcp.com.br/', { waitUntil: 'domcontentloaded', timeout: 30000 });
 
         if (savedCookies) {
-          await page.setCookie(...savedCookies);
-          console.log('TCP: Cookies de sessão aplicados.');
+          // Filtrar cookies do WAF Imperva (incap_ses, visid_incap, nlbi) para não sobrescrever os cookies válidos
+          // gerados localmente pelo IP da própria instância do Render durante a navegação na Home
+          const filteredCookies = savedCookies.filter(c => 
+            !c.name.startsWith('incap_ses') && 
+            !c.name.startsWith('visid_incap') && 
+            !c.name.startsWith('nlbi')
+          );
+          await page.setCookie(...filteredCookies);
+          console.log('TCP: Cookies de sessão aplicados (filtrando cookies do WAF).');
         }
 
         console.log('TCP: Navegando de forma invisível para área de consulta...');
@@ -221,8 +228,11 @@ async function queryTCP(containerCode) {
       } catch (gotoErr) {
         console.log('TCP: Falha na autenticação silenciosa (headless):', gotoErr.message);
         try {
-          if (fs.existsSync(COOKIES_PATH_TCP)) {
+          // Apenas deleta o arquivo de cookies se a sessão tiver expirado de fato (redirecionado para login)
+          // Evita deletar os cookies se for apenas um timeout de rede ou lentidão temporária
+          if (gotoErr.message.includes('Sessão expirada') && fs.existsSync(COOKIES_PATH_TCP)) {
             fs.unlinkSync(COOKIES_PATH_TCP);
+            console.log('TCP: Cookies limpos devido a sessão expirada.');
           }
         } catch (delErr) {}
         shouldRunVisibleLogin = true;
