@@ -209,8 +209,8 @@ async function queryTCP(containerCode) {
 
         console.log('TCP: Aguardando carregamento da página ou redirecionamento de login...');
         const resolvedSelector = await Promise.race([
-          page.waitForSelector('input#search', { timeout: 15000 }).then(() => 'search'),
-          page.waitForSelector('input[type="password"]', { timeout: 15000 }).then(() => 'login'),
+          page.waitForSelector('input#search', { timeout: 30000 }).then(() => 'search'),
+          page.waitForSelector('input[type="password"]', { timeout: 30000 }).then(() => 'login'),
         ]);
 
         if (resolvedSelector === 'login') {

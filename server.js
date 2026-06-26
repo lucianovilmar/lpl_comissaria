@@ -19,7 +19,15 @@ const mime = {
   '.json':'application/json'
 };
 
-const EXCEL_PATH = 'C:\\Users\\LVS 06 Dev\\Downloads\\Gestão de Processos - MARFRIG x DESPACHANTES.xlsx';
+const DOWNLOADS_EXCEL_PATH = 'C:\\Users\\LVS 06 Dev\\Downloads\\Gestão de Processos - MARFRIG x DESPACHANTES.xlsx';
+const LOCAL_EXCEL_NAME = 'Gestão de Processos - MARFRIG x DESPACHANTES.xlsx';
+const PROJECT_EXCEL_PATH = path.join(__dirname, LOCAL_EXCEL_NAME);
+
+let EXCEL_PATH = DOWNLOADS_EXCEL_PATH;
+if (fs.existsSync(PROJECT_EXCEL_PATH)) {
+  EXCEL_PATH = PROJECT_EXCEL_PATH;
+}
+
 let cachedWorkbook = null;
 let cachedMtime = null;
 
@@ -38,16 +46,30 @@ function excelDateToDateString(excelSerial) {
   }
 }
 
-// Load workbook with file mtime caching
+// Load workbook with file mtime caching and fallback project scanning
 function loadWorkbook() {
-  if (!fs.existsSync(EXCEL_PATH)) {
-    throw new Error('Arquivo Excel de processos não localizado na pasta de downloads.');
+  let targetPath = EXCEL_PATH;
+  
+  if (!fs.existsSync(targetPath)) {
+    // If main path is not found, search dynamically inside the project directory for any xlsx file
+    try {
+      const files = fs.readdirSync(__dirname);
+      const xlsxFile = files.find(f => f.endsWith('.xlsx') && !f.startsWith('~$'));
+      if (xlsxFile) {
+        targetPath = path.join(__dirname, xlsxFile);
+      }
+    } catch (e) {}
   }
-  const stats = fs.statSync(EXCEL_PATH);
+  
+  if (!fs.existsSync(targetPath)) {
+    throw new Error('Arquivo Excel de processos não localizado na pasta de downloads nem na pasta do projeto.');
+  }
+  
+  const stats = fs.statSync(targetPath);
   const mtime = stats.mtimeMs;
   if (!cachedWorkbook || cachedMtime !== mtime) {
-    console.log(`Carregando planilha de processos do Excel (mtime: ${mtime})...`);
-    cachedWorkbook = XLSX.readFile(EXCEL_PATH);
+    console.log(`Carregando planilha de processos do Excel de: ${targetPath} (mtime: ${mtime})...`);
+    cachedWorkbook = XLSX.readFile(targetPath);
     cachedMtime = mtime;
   }
   return cachedWorkbook;
