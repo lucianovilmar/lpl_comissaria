@@ -9,6 +9,24 @@ if(firstNavBtn && firstNavBtn.parentNode && !document.querySelector('[data-page=
   firstNavBtn.parentNode.appendChild(btn);
 }
 
+// Injetar botão "LPL Planilha" se não existir
+if(firstNavBtn && firstNavBtn.parentNode && !document.querySelector('[data-page="lpl-planilha"]')){
+  const btn = document.createElement('button');
+  btn.className = 'nav-btn';
+  btn.dataset.page = 'lpl-planilha';
+  btn.textContent = 'LPL Planilha';
+  firstNavBtn.parentNode.appendChild(btn);
+}
+
+// Injetar botão "Gestão de Processos" se não existir
+if(firstNavBtn && firstNavBtn.parentNode && !document.querySelector('[data-page="gestao-processos"]')){
+  const btn = document.createElement('button');
+  btn.className = 'nav-btn';
+  btn.dataset.page = 'gestao-processos';
+  btn.textContent = 'Gestão de Processos';
+  firstNavBtn.parentNode.appendChild(btn);
+}
+
 const navButtons = document.querySelectorAll('.nav-btn');
 const contentArea = document.getElementById('content-area');
 const greenAccessPassword = 'Luiggi9654';
@@ -62,6 +80,8 @@ function loadPage(page){
   if(page === 'due') renderDue();
   else if(page === 'planilha') renderPlanilha();
   else if(page === 'green') renderGreenTest();
+  else if(page === 'lpl-planilha') renderLplPlanilha();
+  else if(page === 'gestao-processos') renderGestaoProcessos();
   else renderTeste();
 }
 
@@ -1264,4 +1284,1176 @@ async function generateMinervaExcel(data){
   anchor.download = "LPL_Planilha.xlsx";
   anchor.click();
   window.URL.revokeObjectURL(url);
+}
+
+// ==========================================
+// FUNÇÕES PARA LPL PLANILHA E PORTOS API
+// ==========================================
+
+function renderLplPlanilha(){
+  const loggedInUser = sessionStorage.getItem('lpl_planilha_user');
+  if(!loggedInUser){
+    renderLplPlanilhaLogin('', 'lpl-planilha');
+  } else {
+    renderLplPlanilhaDashboard(loggedInUser);
+  }
+}
+
+function renderLplPlanilhaLogin(errorMessage = '', redirectPage = 'lpl-planilha'){
+  contentArea.innerHTML = `
+    <div class="card" style="max-width: 400px; margin: 40px auto; padding: 30px; box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3); border: 1px solid var(--border); background: var(--card-bg); border-radius: 12px;">
+      <h2 style="text-align: center; margin-bottom: 24px; color: var(--text);">LPL Planilha — Acesso</h2>
+      
+      ${errorMessage ? `<div style="background-color: rgba(220, 53, 69, 0.1); color: #ff4a5a; padding: 10px; border-radius: 6px; border: 1px solid rgba(220, 53, 69, 0.2); margin-bottom: 16px; font-size: 14px; text-align: center;">${errorMessage}</div>` : ''}
+      
+      <form id="lplLoginForm" style="display: flex; flex-direction: column; gap: 16px;">
+        <div class="field" style="width: 100%;">
+          <label style="margin-bottom: 6px; font-weight: 500;">Usuário</label>
+          <input type="text" id="lplUsernameInput" required style="width: 100%; box-sizing: border-box; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); color: var(--text); outline: none;" placeholder="Nome de usuário">
+        </div>
+        
+        <div class="field" style="width: 100%;">
+          <label style="margin-bottom: 6px; font-weight: 500;">Senha</label>
+          <input type="password" id="lplPasswordInput" required style="width: 100%; box-sizing: border-box; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); color: var(--text); outline: none;" placeholder="Senha">
+        </div>
+        
+        <button type="submit" class="nav-btn active" style="margin-top: 10px; width: 100%; text-align: center; font-weight: bold; padding: 12px; border-radius: 6px;">Entrar</button>
+      </form>
+    </div>
+  `;
+  
+  const form = document.getElementById('lplLoginForm');
+  if(form){
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const login = document.getElementById('lplUsernameInput').value.trim();
+      const senha = document.getElementById('lplPasswordInput').value;
+      
+      try {
+        const response = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ login, senha })
+        });
+        
+        const result = await response.json();
+        if(response.ok && result.success){
+          sessionStorage.setItem('lpl_planilha_user', result.user);
+          const targetBtn = document.querySelector(`[data-page="${redirectPage}"]`);
+          if(targetBtn){
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            targetBtn.classList.add('active');
+          }
+          loadPage(redirectPage);
+        } else {
+          renderLplPlanilhaLogin(result.message || 'Login ou senha inválidos.', redirectPage);
+        }
+      } catch(err){
+        console.error(err);
+        renderLplPlanilhaLogin('Erro ao conectar ao servidor.', redirectPage);
+      }
+    });
+  }
+}
+
+function renderLplPlanilhaDashboard(username){
+  contentArea.innerHTML = `
+    <div class="card" style="position: relative; padding: 24px; border-radius: 12px; border: 1px solid var(--border); background: var(--card-bg);">
+      <!-- Header do painel -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 10px; height: 10px; background-color: #28a745; border-radius: 50%;"></div>
+          <span style="font-weight: 500; font-size: 16px; color: var(--text);">Usuário: <strong>${username}</strong></span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <label class="nav-btn" style="margin: 0; width: auto; font-size: 13px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.02); color: var(--text);">
+            🔑 Importar Cookies TCP
+            <input type="file" id="lplCookieUploadInput" accept=".json" style="display: none;">
+          </label>
+          <button id="lplLogoutBtn" class="nav-btn" style="margin: 0; width: auto; font-size: 13px; padding: 6px 12px; background: rgba(220, 53, 69, 0.1); color: #ff4a5a; border: 1px solid rgba(220, 53, 69, 0.2); border-radius: 6px;">Sair</button>
+        </div>
+      </div>
+
+      <!-- Pesquisa de Contêiner -->
+      <div style="margin-bottom: 30px;">
+        <h3 style="margin-top: 0; margin-bottom: 12px; color: var(--text);">Consulta de Contêineres</h3>
+        <p style="color: var(--muted); font-size: 14px; margin-bottom: 16px;">Consulte o status do contêiner nos terminais portuários parceiros (TCP, POA, NAV, TEC).</p>
+        
+        <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+          <div class="field" style="flex: 1; min-width: 250px; margin-bottom: 0;">
+            <label style="margin-bottom: 6px;">Código do Contêiner</label>
+            <input type="text" id="lplContainerInput" placeholder="Ex: ABCD1234567" style="width: 100%; box-sizing: border-box; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); color: var(--text); outline: none;">
+          </div>
+          <button id="lplSearchBtn" class="nav-btn active" style="margin: 0; padding: 11px 24px; font-weight: bold; width: auto; border-radius: 6px;">Pesquisar</button>
+        </div>
+      </div>
+
+      <!-- Grid de Status das APIs -->
+      <div id="lplApisStatusGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 30px;">
+        <div class="api-status-card" id="api-card-tcp" style="padding: 16px; border-radius: 8px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); display: flex; flex-direction: column; gap: 4px;">
+          <span style="font-weight: bold; font-size: 14px;">TCP (Paranaguá)</span>
+          <span class="status-badge" style="font-size: 12px; color: var(--muted);">Aguardando consulta...</span>
+        </div>
+        <div class="api-status-card" id="api-card-poa" style="padding: 16px; border-radius: 8px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); display: flex; flex-direction: column; gap: 4px;">
+          <span style="font-weight: bold; font-size: 14px;">POA (Itapoá)</span>
+          <span class="status-badge" style="font-size: 12px; color: var(--muted);">Aguardando consulta...</span>
+        </div>
+        <div class="api-status-card" id="api-card-nav" style="padding: 16px; border-radius: 8px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); display: flex; flex-direction: column; gap: 4px;">
+          <span style="font-weight: bold; font-size: 14px;">NAV (Portonave)</span>
+          <span class="status-badge" style="font-size: 12px; color: var(--muted);">Aguardando consulta...</span>
+        </div>
+        <div class="api-status-card" id="api-card-tec" style="padding: 16px; border-radius: 8px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); display: flex; flex-direction: column; gap: 4px;">
+          <span style="font-weight: bold; font-size: 14px;">TEC (Teconline)</span>
+          <span class="status-badge" style="font-size: 12px; color: var(--muted);">Aguardando consulta...</span>
+        </div>
+      </div>
+
+      <!-- Resultados -->
+      <div id="lplResultsArea" style="min-height: 100px; padding: 16px; border: 1px dashed var(--border); border-radius: 8px; background: rgba(255,255,255,0.01);">
+        <div style="text-align: center; color: var(--muted); padding: 20px 0;">Insira o código do contêiner para iniciar a busca.</div>
+      </div>
+    </div>
+  `;
+
+  // Anexar evento de Logout
+  const logoutBtn = document.getElementById('lplLogoutBtn');
+  if(logoutBtn){
+    logoutBtn.addEventListener('click', () => {
+      sessionStorage.removeItem('lpl_planilha_user');
+      renderLplPlanilha();
+    });
+  }
+
+  // Resultados ativos na sessão
+  let activeLplResults = [];
+
+  // Anexar evento de busca geral (todos os portos)
+  const searchBtn = document.getElementById('lplSearchBtn');
+  const containerInput = document.getElementById('lplContainerInput');
+  if(searchBtn && containerInput){
+    const doSearch = async () => {
+      const containerInputVal = containerInput.value.trim();
+      if(!containerInputVal){
+        alert('Por favor, digite o código do contêiner.');
+        return;
+      }
+      
+      const containerCodes = containerInputVal.split(',')
+        .map(c => c.trim().toUpperCase())
+        .filter(Boolean);
+        
+      if(containerCodes.length === 0){
+        alert('Por favor, digite ao menos um código de contêiner válido.');
+        return;
+      }
+      
+      // Atualizar interface para estado de busca inicial
+      updateApiStatus('tcp', 'searching', 'Buscando...');
+      updateApiStatus('poa', 'searching', 'Buscando...');
+      updateApiStatus('nav', 'searching', 'Buscando...');
+      updateApiStatus('tec', 'searching', 'Buscando...');
+      
+      const resultsArea = document.getElementById('lplResultsArea');
+      
+      // Gerar HTML da lista de progresso com design premium e responsivo
+      let progressItemsHtml = '';
+      containerCodes.forEach(code => {
+        progressItemsHtml += `
+          <div id="progress-item-${code}" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid var(--border); border-left: 4px solid #6c757d; transition: all 0.3s ease; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 8px; text-align: left;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span class="progress-icon" style="font-size: 16px; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; color: var(--muted);">⏳</span>
+              <span style="font-weight: 600; color: var(--text); font-size: 14px; letter-spacing: 0.5px;">${code}</span>
+            </div>
+            <span class="progress-status" style="color: var(--muted); font-size: 13px; font-weight: 600; letter-spacing: 0.2px;">Aguardando...</span>
+          </div>
+        `;
+      });
+      
+      resultsArea.innerHTML = `
+        <div style="text-align: center; padding: 20px 0; color: var(--text);">
+          <div class="spinner-inline" style="margin-bottom: 16px;"></div>
+          <div style="font-weight: bold; font-size: 16px; margin-bottom: 20px;">Buscando nos terminais portuários...</div>
+          <div style="display: flex; flex-direction: column; gap: 4px; max-width: 450px; margin: 0 auto; width: 100%;">
+            ${progressItemsHtml}
+          </div>
+        </div>
+      `;
+      
+      activeLplResults = [];
+      const aggregatedStatuses = {
+        tcp: { status: 'success', message: 'Não consultado' },
+        poa: { status: 'success', message: 'Não consultado' },
+        nav: { status: 'success', message: 'Não consultado' },
+        tec: { status: 'success', message: 'Não consultado' }
+      };
+      
+      try {
+        for (const code of containerCodes) {
+          const item = document.getElementById(`progress-item-${code}`);
+          if(item){
+            const statusEl = item.querySelector('.progress-status');
+            const iconEl = item.querySelector('.progress-icon');
+            if(statusEl) {
+              statusEl.innerHTML = 'Buscando...';
+              statusEl.style.color = '#0a84ff';
+            }
+            if(iconEl) {
+              iconEl.innerHTML = '<span class="spinner-inline" style="width: 14px; height: 14px; border-width: 2px;"></span>';
+              iconEl.style.color = '#0a84ff';
+            }
+            item.style.borderColor = 'rgba(10, 132, 255, 0.2)';
+            item.style.borderLeftColor = '#0a84ff';
+            item.style.background = 'rgba(10, 132, 255, 0.04)';
+          }
+          
+          const response = await fetch(`/api/search?container=${code}`);
+          const result = await response.json();
+          
+          let found = false;
+          if(result.results && result.results.length > 0){
+            found = true;
+            activeLplResults.push(...result.results);
+          }
+          
+          // Atualizar item de progresso
+          if(item){
+            const statusEl = item.querySelector('.progress-status');
+            const iconEl = item.querySelector('.progress-icon');
+            if(found){
+              const match = result.results.find(r => r.booking && r.booking !== 'N/A');
+              const bkg = match ? ` (Bkg: ${match.booking})` : '';
+              const portsFound = result.results.map(r => r.api).join(', ');
+              if(statusEl) {
+                statusEl.innerHTML = `Achado em ${portsFound}${bkg}`;
+                statusEl.style.color = '#28a745';
+              }
+              if(iconEl) {
+                iconEl.innerHTML = '✔';
+                iconEl.style.color = '#28a745';
+              }
+              item.style.borderColor = 'rgba(40, 167, 69, 0.2)';
+              item.style.borderLeftColor = '#28a745';
+              item.style.background = 'rgba(40, 167, 69, 0.04)';
+            } else {
+              if(statusEl) {
+                statusEl.innerHTML = 'Não encontrado';
+                statusEl.style.color = '#dc3545';
+              }
+              if(iconEl) {
+                iconEl.innerHTML = '✖';
+                iconEl.style.color = '#dc3545';
+              }
+              item.style.borderColor = 'rgba(220, 53, 69, 0.2)';
+              item.style.borderLeftColor = '#dc3545';
+              item.style.background = 'rgba(220, 53, 69, 0.04)';
+            }
+          }
+          
+          // Agregar status
+          if(result.statuses){
+            Object.keys(result.statuses).forEach(port => {
+              const val = result.statuses[port];
+              const current = aggregatedStatuses[port];
+              
+              const getWeight = (s) => {
+                if (s.status === 'erro login') return 4;
+                if (s.status === 'erro api') return 3;
+                if (s.status === 'success' && s.message === 'Sucesso') return 2;
+                if (s.status === 'success' && s.message === 'Não encontrado') return 1;
+                return 0;
+              };
+              
+              if(getWeight(val) > getWeight(current)){
+                aggregatedStatuses[port] = val;
+              }
+            });
+            
+            // Atualizar status na grade superior em tempo real
+            Object.keys(aggregatedStatuses).forEach(port => {
+              const val = aggregatedStatuses[port];
+              if(val.message !== 'Não consultado'){
+                updateApiStatus(port, val.status, val.message);
+              }
+            });
+          }
+          
+          // Esperar um breve momento antes do próximo
+          await new Promise(resolve => setTimeout(resolve, 800));
+        }
+        
+        // Renderizar a lista final de resultados
+        renderResultsList(activeLplResults, containerInputVal.toUpperCase());
+      } catch(err){
+        console.error(err);
+        resultsArea.innerHTML = `<div style="text-align: center; padding: 20px 0; color: #ff4a5a;">Erro na comunicação com o servidor.</div>`;
+        updateApiStatus('tcp', 'error_api', 'Erro de API');
+        updateApiStatus('poa', 'error_api', 'Erro de API');
+        updateApiStatus('nav', 'error_api', 'Erro de API');
+        updateApiStatus('tec', 'error_api', 'Erro de API');
+      }
+    };
+    
+    searchBtn.addEventListener('click', doSearch);
+    containerInput.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter') doSearch();
+    });
+
+    // Vincular clique de busca individual para cada cartão de terminal
+    const bindSinglePortSearch = (port) => {
+      const card = document.getElementById(`api-card-${port}`);
+      if(card){
+        card.style.cursor = 'pointer';
+        card.style.transition = 'all 0.2s ease';
+        
+        card.addEventListener('mouseenter', () => {
+          card.style.background = 'rgba(255,255,255,0.06)';
+          card.style.transform = 'translateY(-2px)';
+          card.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+        });
+        card.addEventListener('mouseleave', () => {
+          card.style.background = 'rgba(255,255,255,0.02)';
+          card.style.transform = 'none';
+          card.style.boxShadow = 'none';
+        });
+        
+        card.addEventListener('click', async () => {
+          const containerInputVal = containerInput.value.trim();
+          if(!containerInputVal){
+            alert('Por favor, digite o código do contêiner primeiro.');
+            return;
+          }
+          
+          const containerCodes = containerInputVal.split(',')
+            .map(c => c.trim().toUpperCase())
+            .filter(Boolean);
+            
+          if(containerCodes.length === 0){
+            alert('Por favor, digite ao menos um código de contêiner válido.');
+            return;
+          }
+          
+          const resultsArea = document.getElementById('lplResultsArea');
+          
+          // Gerar HTML da lista de progresso com design premium e responsivo
+          let progressItemsHtml = '';
+          containerCodes.forEach(code => {
+            progressItemsHtml += `
+              <div id="progress-item-${code}" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid var(--border); border-left: 4px solid #6c757d; transition: all 0.3s ease; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 8px; text-align: left;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span class="progress-icon" style="font-size: 16px; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; color: var(--muted);">⏳</span>
+                  <span style="font-weight: 600; color: var(--text); font-size: 14px; letter-spacing: 0.5px;">${code}</span>
+                </div>
+                <span class="progress-status" style="color: var(--muted); font-size: 13px; font-weight: 600; letter-spacing: 0.2px;">Aguardando...</span>
+              </div>
+            `;
+          });
+          
+          resultsArea.innerHTML = `
+            <div style="text-align: center; padding: 20px 0; color: var(--text);">
+              <div class="spinner-inline" style="margin-bottom: 16px;"></div>
+              <div style="font-weight: bold; font-size: 16px; margin-bottom: 20px;">Buscando no terminal ${port.toUpperCase()}...</div>
+              <div style="display: flex; flex-direction: column; gap: 4px; max-width: 450px; margin: 0 auto; width: 100%;">
+                ${progressItemsHtml}
+              </div>
+            </div>
+          `;
+          
+          updateApiStatus(port, 'searching', 'Buscando...');
+          
+          try {
+            // Filtrar resultados anteriores deste porto de uma vez
+            activeLplResults = activeLplResults.filter(r => r.api !== port.toUpperCase());
+            
+            for (const code of containerCodes) {
+              const item = document.getElementById(`progress-item-${code}`);
+              if(item){
+                const statusEl = item.querySelector('.progress-status');
+                const iconEl = item.querySelector('.progress-icon');
+                if(statusEl) {
+                  statusEl.innerHTML = 'Buscando...';
+                  statusEl.style.color = '#0a84ff';
+                }
+                if(iconEl) {
+                  iconEl.innerHTML = '<span class="spinner-inline" style="width: 14px; height: 14px; border-width: 2px;"></span>';
+                  iconEl.style.color = '#0a84ff';
+                }
+                item.style.borderColor = 'rgba(10, 132, 255, 0.2)';
+                item.style.borderLeftColor = '#0a84ff';
+                item.style.background = 'rgba(10, 132, 255, 0.04)';
+              }
+              
+              const response = await fetch(`/api/search?container=${code}&port=${port}`);
+              const result = await response.json();
+              
+              let found = false;
+              if(result.results && result.results.length > 0){
+                found = true;
+                activeLplResults.push(...result.results);
+              }
+              
+              // Atualizar item de progresso
+              if(item){
+                const statusEl = item.querySelector('.progress-status');
+                const iconEl = item.querySelector('.progress-icon');
+                if(found){
+                  const match = result.results.find(r => r.booking && r.booking !== 'N/A');
+                  const bkg = match ? ` (Bkg: ${match.booking})` : '';
+                  if(statusEl) {
+                    statusEl.innerHTML = `Achado${bkg}`;
+                    statusEl.style.color = '#28a745';
+                  }
+                  if(iconEl) {
+                    iconEl.innerHTML = '✔';
+                    iconEl.style.color = '#28a745';
+                  }
+                  item.style.borderColor = 'rgba(40, 167, 69, 0.2)';
+                  item.style.borderLeftColor = '#28a745';
+                  item.style.background = 'rgba(40, 167, 69, 0.04)';
+                } else {
+                  if(statusEl) {
+                    statusEl.innerHTML = 'Não encontrado';
+                    statusEl.style.color = '#dc3545';
+                  }
+                  if(iconEl) {
+                    iconEl.innerHTML = '✖';
+                    iconEl.style.color = '#dc3545';
+                  }
+                  item.style.borderColor = 'rgba(220, 53, 69, 0.2)';
+                  item.style.borderLeftColor = '#dc3545';
+                  item.style.background = 'rgba(220, 53, 69, 0.04)';
+                }
+              }
+              
+              // Atualizar status individual na grade superior
+              if(result.statuses && result.statuses[port]){
+                const val = result.statuses[port];
+                updateApiStatus(port, val.status, val.message);
+              }
+              
+              await new Promise(resolve => setTimeout(resolve, 800));
+            }
+            
+            renderResultsList(activeLplResults, containerInputVal.toUpperCase());
+          } catch(err){
+            console.error(err);
+            updateApiStatus(port, 'erro api', 'Erro de API');
+          }
+        });
+      }
+    };
+
+    bindSinglePortSearch('tcp');
+    bindSinglePortSearch('poa');
+    bindSinglePortSearch('nav');
+    bindSinglePortSearch('tec');
+
+    // Handler para upload de cookies
+    const cookieInput = document.getElementById('lplCookieUploadInput');
+    if (cookieInput) {
+      cookieInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+          try {
+            const cookies = JSON.parse(evt.target.result);
+            if (!Array.isArray(cookies)) {
+              alert('Formato de cookies inválido. O arquivo deve conter um array JSON de cookies.');
+              return;
+            }
+            
+            const response = await fetch('/api/upload-cookies', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type: 'tcp', cookies })
+            });
+            
+            const result = await response.json();
+            if (response.ok && result.success) {
+              alert(result.message);
+              updateApiStatus('tcp', 'success', 'Cookies Importados');
+            } else {
+              alert('Erro ao salvar cookies: ' + (result.error || 'Erro desconhecido'));
+            }
+          } catch (err) {
+            alert('Erro ao ler ou processar o arquivo: ' + err.message);
+          }
+        };
+        reader.readAsText(file);
+      });
+    }
+  }
+}
+
+function updateApiStatus(port, status, message){
+  const card = document.getElementById(`api-card-${port}`);
+  if(!card) return;
+  const badge = card.querySelector('.status-badge');
+  if(!badge) return;
+  
+  badge.textContent = message;
+  card.className = 'api-status-card';
+  card.style.borderWidth = '1px';
+  card.style.borderStyle = 'solid';
+  
+  if(status === 'searching'){
+    card.style.borderColor = '#0a84ff';
+    badge.style.color = '#0a84ff';
+    card.style.animation = 'pulse-active 1.5s infinite';
+  } else if(status === 'success'){
+    card.style.borderColor = '#28a745';
+    badge.style.color = '#28a745';
+    card.style.animation = 'none';
+  } else if(status === 'erro login'){
+    card.style.borderColor = '#fd7e14';
+    badge.style.color = '#fd7e14';
+    card.style.animation = 'none';
+  } else if(status === 'erro api'){
+    card.style.borderColor = '#dc3545';
+    badge.style.color = '#dc3545';
+    card.style.animation = 'none';
+  } else {
+    card.style.borderColor = 'var(--border)';
+    badge.style.color = 'var(--muted)';
+    card.style.animation = 'none';
+  }
+}
+
+function renderResultsList(results, containerCode){
+  const resultsArea = document.getElementById('lplResultsArea');
+  if(!resultsArea) return;
+  
+  if(results.length === 0){
+    resultsArea.innerHTML = `
+      <div style="text-align: center; padding: 30px 0; color: var(--muted);">
+        Nenhum registro encontrado para o contêiner <strong>${containerCode}</strong> nos terminais integrados.
+      </div>
+    `;
+    return;
+  }
+  
+  let html = `<h4 style="margin-top: 0; margin-bottom: 16px; color: var(--text);">Resultados da busca (${results.length}):</h4>`;
+  html += `<div style="display: flex; flex-direction: column; gap: 16px;">`;
+  
+  results.forEach(res => {
+    if (res.notFound) {
+      html += `
+        <div class="card" style="margin-bottom:0; padding:16px; border:1px solid rgba(220,53,69,0.3); background:rgba(220,53,69,0.01); display:flex; flex-direction:column; gap:12px; border-left: 4px solid #dc3545;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="badge badge-tcp" style="background:#dc3545; color:white;">${res.api}</span>
+              <strong style="font-size: 16px; color: var(--text);">${res.container}</strong>
+            </div>
+            <span style="font-size: 13px; color: var(--muted);">${res.timeScraped || ''}</span>
+          </div>
+          
+          <div style="display:flex; justify-content:space-between; align-items:center; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 12px; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:18px;">❌</span>
+              <div style="font-weight: 500; color: var(--muted); font-size:14px;">${res.status}</div>
+            </div>
+            <button onclick="window.reSearchContainer('${res.container}', '${res.api.toLowerCase()}')" class="nav-btn" style="margin: 0; padding: 6px 14px; font-size: 12px; font-weight: bold; width: auto; border-radius: 4px; background: rgba(220, 53, 69, 0.1); color: #ff4a5a; border: 1px solid rgba(220, 53, 69, 0.2);">
+              Pesquisar novamente
+            </button>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    let badgeClass = 'badge-tcp';
+    if(res.api === 'POA') badgeClass = 'badge-poa';
+    else if(res.api === 'NAV') badgeClass = 'badge-nav';
+    else if(res.api === 'TEC') badgeClass = 'badge-tec';
+    
+    if (res.isDetailed) {
+      // 1. Gerar stepper
+      const stepsKeys = ['Entrada', 'Aduaneiro', 'Embarque', 'Faturamento'];
+      const stepsHtml = stepsKeys.map((key, idx) => {
+        const step = res.stepper[key] || { date: '-', state: 'pending' };
+        let circleBg = 'rgba(255,255,255,0.1)';
+        let circleText = idx + 1;
+        let labelColor = 'var(--muted)';
+        
+        if (step.state === 'completed') {
+          circleBg = '#28a745';
+          circleText = '✓';
+          labelColor = 'var(--text)';
+        } else if (step.state === 'active') {
+          circleBg = '#007bff';
+          circleText = idx + 1;
+          labelColor = 'var(--text)';
+        }
+        
+        let lineHtml = '';
+        if (idx < 3) {
+          const nextKey = stepsKeys[idx + 1];
+          const nextStep = res.stepper[nextKey] || { date: '-', state: 'pending' };
+          const lineColor = (nextStep.state === 'completed' || nextStep.state === 'active') ? '#28a745' : 'rgba(255,255,255,0.05)';
+          lineHtml = `<div style="position:absolute; top:15px; left:calc(50% + 15px); right:calc(-50% + 15px); height:2px; background:${lineColor}; z-index:1;"></div>`;
+        }
+        
+        return `
+          <div style="display:flex; flex-direction:column; align-items:center; flex:1; position:relative; min-width:90px; text-align:center;">
+            ${lineHtml}
+            <div style="width:30px; height:30px; border-radius:50%; display:flex; justify-content:center; align-items:center; font-weight:bold; color:white; font-size:14px; background:${circleBg}; z-index:2; box-shadow:0 0 8px rgba(0,0,0,0.2);">
+              ${circleText}
+            </div>
+            <span style="font-size:12px; font-weight:600; margin-top:8px; color:${labelColor};">${key}</span>
+            <span style="font-size:10px; color:var(--muted); margin-top:2px; font-family:monospace;">${step.date || '-'}</span>
+          </div>
+        `;
+      }).join('');
+
+      // 2. Gerar Aba Situação
+      const situacaoGrid = Object.keys(res.situacao).map(k => `
+        <div style="background:rgba(255,255,255,0.01); border:1px solid rgba(255,255,255,0.03); padding:10px; border-radius:6px;">
+          <span style="color:var(--muted); font-size:11px; display:block; margin-bottom:2px;">${k}</span>
+          <strong style="color:var(--text); font-size:13px;">${res.situacao[k] || '-'}</strong>
+        </div>
+      `).join('');
+      
+      // 3. Gerar Aba Detalhes
+      const detalhesGrid = Object.keys(res.detalhes.kvs).map(k => `
+        <div style="background:rgba(255,255,255,0.01); border:1px solid rgba(255,255,255,0.03); padding:10px; border-radius:6px;">
+          <span style="color:var(--muted); font-size:11px; display:block; margin-bottom:2px;">${k}</span>
+          <strong style="color:var(--text); font-size:13px;">${res.detalhes.kvs[k] || '-'}</strong>
+        </div>
+      `).join('');
+      
+      let docTableHtml = '';
+      const docs = res.detalhes.documentos || [];
+      if (docs.length > 0) {
+        const headers = Object.keys(docs[0]);
+        docTableHtml = `
+          <div style="margin-top:16px;">
+            <span style="color:var(--muted); font-size:12px; font-weight:600; display:block; margin-bottom:8px;">Documentação:</span>
+            <div style="overflow-x:auto; border:1px solid rgba(255,255,255,0.05); border-radius:6px;">
+              <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;">
+                <thead>
+                  <tr style="background:rgba(255,255,255,0.03); border-bottom:1px solid rgba(255,255,255,0.05);">
+                    ${headers.map(h => `<th style="padding:8px 12px; color:var(--muted); font-weight:500;">${h}</th>`).join('')}
+                  </tr>
+                </thead>
+                <tbody>
+                  ${docs.map(doc => `
+                    <tr style="border-bottom:1px solid rgba(255,255,255,0.02);">
+                      ${headers.map(h => `<td style="padding:8px 12px; color:var(--text);">${doc[h] || '-'}</td>`).join('')}
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }
+
+      // 4. Gerar Aba Agendamento
+      const agendamentoGrid = Object.keys(res.agendamento.kvs).map(k => `
+        <div style="background:rgba(255,255,255,0.01); border:1px solid rgba(255,255,255,0.03); padding:10px; border-radius:6px;">
+          <span style="color:var(--muted); font-size:11px; display:block; margin-bottom:2px;">${k}</span>
+          <strong style="color:var(--text); font-size:13px;">${res.agendamento.kvs[k] || '-'}</strong>
+        </div>
+      `).join('');
+      
+      const timelineKeys = ['Agendamento', 'SAV', 'Entrada Gate', 'Operação', 'Saída Gate'];
+      const timelineItems = timelineKeys.map(key => {
+        const val = res.agendamento.timeline[key] || '-';
+        const isDone = val !== '-';
+        const circleBg = isDone ? '#28a745' : 'rgba(255,255,255,0.1)';
+        const textColor = isDone ? 'var(--text)' : 'var(--muted)';
+        
+        return `
+          <div style="display:flex; flex-direction:column; align-items:center; flex:1; position:relative; min-width:80px; text-align:center;">
+            <div style="width:10px; height:10px; border-radius:50%; background:${circleBg}; z-index:2; box-shadow: 0 0 6px ${circleBg};"></div>
+            <span style="font-size:11px; font-weight:500; margin-top:6px; color:${textColor};">${key}</span>
+            <span style="font-size:9px; color:var(--muted); margin-top:2px; font-family:monospace;">${val}</span>
+          </div>
+        `;
+      }).join('');
+
+      html += `
+        <div class="card" style="margin-bottom:0; padding:16px; border:1px solid var(--border); background:rgba(255,255,255,0.02); display:flex; flex-direction:column; gap:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="badge ${badgeClass}">${res.api}</span>
+              <strong style="font-size: 16px; color: var(--text);">${res.container}</strong>
+            </div>
+            <span style="font-size: 13px; color: var(--muted);">${res.timeScraped || ''}</span>
+          </div>
+
+          <!-- Stepper Visual -->
+          <div style="display:flex; justify-content:space-between; align-items:center; margin:12px 0 24px 0; position:relative; overflow-x:auto; padding:10px 0; border-top: 1px solid rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.03);">
+            ${stepsHtml}
+          </div>
+
+          <!-- Sub-abas -->
+          <div class="sub-tabs-container" style="display:flex; flex-direction:column; gap:12px;">
+            <div style="display:flex; gap:8px; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:4px;">
+              <button class="sub-tab-btn active" onclick="switchSubTab(this, 'situacao', '${res.container}')" style="background:none; border:none; color:var(--text); font-weight:600; font-size:13px; padding:6px 12px; cursor:pointer; border-bottom:2px solid #bc9855; outline:none; transition:all 0.2s;">Situação</button>
+              <button class="sub-tab-btn" onclick="switchSubTab(this, 'detalhes', '${res.container}')" style="background:none; border:none; color:var(--muted); font-weight:500; font-size:13px; padding:6px 12px; cursor:pointer; border-bottom:2px solid transparent; outline:none; transition:all 0.2s;">Detalhes</button>
+              <button class="sub-tab-btn" onclick="switchSubTab(this, 'agendamento', '${res.container}')" style="background:none; border:none; color:var(--muted); font-weight:500; font-size:13px; padding:6px 12px; cursor:pointer; border-bottom:2px solid transparent; outline:none; transition:all 0.2s;">Agendamento</button>
+            </div>
+
+            <!-- Tab Contents -->
+            <div id="content-situacao-${res.container}" class="sub-tab-content" style="display:block; padding-top:4px;">
+              <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
+                ${situacaoGrid}
+              </div>
+            </div>
+
+            <div id="content-detalhes-${res.container}" class="sub-tab-content" style="display:none; padding-top:4px;">
+              <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
+                ${detalhesGrid}
+              </div>
+              ${docTableHtml}
+            </div>
+
+            <div id="content-agendamento-${res.container}" class="sub-tab-content" style="display:none; padding-top:4px;">
+              <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px; margin-bottom:16px;">
+                ${agendamentoGrid}
+              </div>
+              <div style="border-top:1px solid rgba(255,255,255,0.05); padding-top:12px;">
+                <span style="color:var(--muted); font-size:12px; font-weight:600; display:block; margin-bottom:10px;">Timeline do Portão/Operação:</span>
+                <div style="display:flex; justify-content:space-between; align-items:center; position:relative; padding:10px 0; overflow-x:auto;">
+                  <div style="position:absolute; top:14px; left:40px; right:40px; height:2px; background:rgba(255,255,255,0.05); z-index:1;"></div>
+                  ${timelineItems}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    html += `
+      <div class="card" style="margin-bottom:0; padding:16px; border:1px solid var(--border); background:rgba(255,255,255,0.02); display:flex; flex-direction:column; gap:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="badge ${badgeClass}">${res.api}</span>
+            <strong style="font-size: 16px; color: var(--text);">${res.container}</strong>
+          </div>
+          <span style="font-size: 13px; color: var(--muted);">${res.timeScraped || ''}</span>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 12px;">
+          <div><span style="color: var(--muted); font-size: 12px;">Status:</span> <div style="font-weight: 500; color: var(--text);">${res.status || 'N/A'}</div></div>
+          <div><span style="color: var(--muted); font-size: 12px;">Peso Bruto:</span> <div style="font-weight: 500; color: var(--text);">${res.weight || 'N/A'}</div></div>
+          <div><span style="color: var(--muted); font-size: 12px;">Tipo:</span> <div style="font-weight: 500; color: var(--text);">${res.type || 'N/A'}</div></div>
+          <div><span style="color: var(--muted); font-size: 12px;">Navio / Viagem:</span> <div style="font-weight: 500; color: var(--text);">${res.vessel || 'N/A'}</div></div>
+          <div><span style="color: var(--muted); font-size: 12px;">Booking / Reserva:</span> <div style="font-weight: 500; color: var(--text);">${res.booking || 'N/A'}</div></div>
+          <div><span style="color: var(--muted); font-size: 12px;">Localização:</span> <div style="font-weight: 500; color: var(--text);">${res.location || 'N/A'}</div></div>
+        </div>
+        
+        ${res.history && res.history.length > 0 ? `
+          <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 12px;">
+            <span style="color: var(--muted); font-size: 12px; display:block; margin-bottom:6px;">Histórico do Contêiner:</span>
+            <div style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; max-height: 150px; overflow-y: auto; padding-right: 8px;">
+              ${res.history.map(h => `
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px dashed rgba(255,255,255,0.02); padding-bottom: 4px;">
+                  <span style="color: var(--text);">${h.event || ''}</span>
+                  <span style="color: var(--muted); font-size: 12px;">${h.date || ''}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  });
+  
+  html += `</div>`;
+  resultsArea.innerHTML = html;
+}
+
+window.switchSubTab = function(btnElement, tabName, containerCode) {
+  const container = btnElement.parentElement;
+  const buttons = container.querySelectorAll('.sub-tab-btn');
+  buttons.forEach(btn => {
+    btn.classList.remove('active');
+    btn.style.color = 'var(--muted)';
+    btn.style.fontWeight = '500';
+    btn.style.borderBottom = '2px solid transparent';
+  });
+  
+  btnElement.classList.add('active');
+  btnElement.style.color = 'var(--text)';
+  btnElement.style.fontWeight = '600';
+  btnElement.style.borderBottom = '2px solid #bc9855';
+  
+  const card = container.closest('.card');
+  const contents = card.querySelectorAll('.sub-tab-content');
+  contents.forEach(content => {
+    content.style.display = 'none';
+  });
+  
+  const targetContent = card.querySelector(`#content-${tabName}-${containerCode}`);
+  if (targetContent) {
+    targetContent.style.display = 'block';
+  }
+};
+
+window.reSearchContainer = function(containerCode, port) {
+  const containerInput = document.getElementById('lplContainerInput');
+  if (containerInput) {
+    containerInput.value = containerCode;
+  }
+  
+  if (port) {
+    const card = document.getElementById(`api-card-${port.toLowerCase()}`);
+    if (card) {
+      card.click();
+      return;
+    }
+  }
+  
+  const searchBtn = document.getElementById('lplSearchBtn');
+  if (searchBtn) {
+    searchBtn.click();
+  }
+};
+
+// ==========================================
+// FUNÇÕES PARA GESTÃO DE PROCESSOS
+// ==========================================
+
+let currentProcessosData = []; // Cache do front-end para aba ativa
+
+function renderGestaoProcessos(){
+  const loggedInUser = sessionStorage.getItem('lpl_planilha_user');
+  if(!loggedInUser){
+    renderLplPlanilhaLogin('', 'gestao-processos');
+  } else {
+    renderGestaoProcessosDashboard(loggedInUser);
+  }
+}
+
+function renderGestaoProcessosDashboard(username){
+  contentArea.innerHTML = `
+    <div class="card" style="padding: 24px; border-radius: 12px; border: 1px solid var(--border); background: var(--card-bg);">
+      <!-- Header -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 10px; height: 10px; background-color: #28a745; border-radius: 50%;"></div>
+          <span style="font-weight: 500; font-size: 16px; color: var(--text);">Usuário: <strong>${username}</strong></span>
+        </div>
+        <button id="processosLogoutBtn" class="nav-btn" style="margin: 0; width: auto; font-size: 13px; padding: 6px 12px; background: rgba(220, 53, 69, 0.1); color: #ff4a5a; border: 1px solid rgba(220, 53, 69, 0.2); border-radius: 6px;">Sair</button>
+      </div>
+
+      <!-- KPIs Summary -->
+      <div class="kpi-container">
+        <div class="kpi-card" id="kpi-embarque">
+          <span class="kpi-title">Aguardando Embarque</span>
+          <span class="kpi-value" id="val-kpi-embarque">-</span>
+        </div>
+        <div class="kpi-card" id="kpi-draft">
+          <span class="kpi-title">Minutas (Draft)</span>
+          <span class="kpi-value" id="val-kpi-draft">-</span>
+        </div>
+        <div class="kpi-card" id="kpi-due">
+          <span class="kpi-title">Processos DU-E</span>
+          <span class="kpi-value" id="val-kpi-due">-</span>
+        </div>
+        <div class="kpi-card" id="kpi-rodoviario">
+          <span class="kpi-title">Fluxo Rodoviário</span>
+          <span class="kpi-value" id="val-kpi-rodoviario">-</span>
+        </div>
+      </div>
+
+      <!-- Search & Filters -->
+      <div style="margin-bottom: 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+        <div class="field" style="flex: 1; min-width: 250px; margin-bottom: 0;">
+          <input type="text" id="processosSearchInput" placeholder="Pesquisar por Contêiner, Booking, Exportador, Navio..." style="width: 100%; box-sizing: border-box; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); color: var(--text); outline: none;">
+        </div>
+        <button id="processosSearchClearBtn" class="nav-btn" style="margin: 0; padding: 10px 16px; width: auto; border-radius: 6px;">Limpar Filtro</button>
+      </div>
+
+      <!-- Tabs -->
+      <div class="process-tabs">
+        <button class="process-tab-btn active" data-aba="AGUARDANDO EMBARQUE">Aguardando Embarque</button>
+        <button class="process-tab-btn" data-aba="DRAFT">Minutas (Draft)</button>
+        <button class="process-tab-btn" data-aba="DUE">DU-E</button>
+        <button class="process-tab-btn" data-aba="RODOVIARIO">Rodoviário</button>
+        <button class="process-tab-btn" data-aba="USO MARFRIG">Uso Marfrig</button>
+      </div>
+
+      <!-- Table Container -->
+      <div id="processosTableArea">
+        <div style="text-align: center; padding: 40px 0; color: var(--text);">
+          <div class="spinner-inline" style="margin-bottom: 12px;"></div>
+          <div>Carregando processos do Excel...</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Anexar Logout
+  const logoutBtn = document.getElementById('processosLogoutBtn');
+  if(logoutBtn){
+    logoutBtn.addEventListener('click', () => {
+      sessionStorage.removeItem('lpl_planilha_user');
+      renderGestaoProcessos();
+    });
+  }
+
+  // Carregar KPIs summary
+  loadProcessosSummary();
+
+  // Carregar aba ativa inicial
+  let activeAba = "AGUARDANDO EMBARQUE";
+  loadAbaData(activeAba);
+
+  // Troca de Abas
+  const tabBtns = document.querySelectorAll('.process-tab-btn');
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeAba = btn.dataset.aba;
+      
+      // Limpar campo de busca
+      const searchInput = document.getElementById('processosSearchInput');
+      if (searchInput) searchInput.value = '';
+      
+      loadAbaData(activeAba);
+    });
+  });
+
+  // Filtragem na barra de busca
+  const searchInput = document.getElementById('processosSearchInput');
+  if(searchInput){
+    searchInput.addEventListener('input', () => {
+      filterTableData(searchInput.value.trim());
+    });
+  }
+
+  const clearBtn = document.getElementById('processosSearchClearBtn');
+  if(clearBtn){
+    clearBtn.addEventListener('click', () => {
+      if(searchInput) {
+        searchInput.value = '';
+        filterTableData('');
+      }
+    });
+  }
+}
+
+async function loadProcessosSummary(){
+  try {
+    const res = await fetch('/api/processos/summary');
+    if(res.ok) {
+      const summary = await res.json();
+      document.getElementById('val-kpi-embarque').textContent = summary['AGUARDANDO EMBARQUE'] || '0';
+      document.getElementById('val-kpi-draft').textContent = summary['DRAFT'] || '0';
+      document.getElementById('val-kpi-due').textContent = summary['DUE'] || '0';
+      document.getElementById('val-kpi-rodoviario').textContent = summary['RODOVIARIO'] || '0';
+    }
+  } catch(err) {
+    console.error('Error fetching processes summary:', err);
+  }
+}
+
+async function loadAbaData(abaName){
+  const tableArea = document.getElementById('processosTableArea');
+  if(!tableArea) return;
+
+  tableArea.innerHTML = `
+    <div style="text-align: center; padding: 40px 0; color: var(--text);">
+      <div class="spinner-inline" style="margin-bottom: 12px;"></div>
+      <div>Carregando aba "${abaName}" do Excel...</div>
+    </div>
+  `;
+
+  try {
+    const res = await fetch(`/api/processos?aba=${encodeURIComponent(abaName)}`);
+    if(res.ok) {
+      currentProcessosData = await res.json();
+      renderProcessosTable(currentProcessosData, abaName);
+    } else {
+      const errorMsg = await res.json();
+      tableArea.innerHTML = `<div style="padding: 20px; color: #ff4a5a; text-align: center; border: 1px dashed #ff4a5a; border-radius: 8px;">Erro ao carregar dados: ${errorMsg.message || 'Erro interno no servidor.'}</div>`;
+    }
+  } catch(err) {
+    console.error('Error loading tab data:', err);
+    tableArea.innerHTML = `<div style="padding: 20px; color: #ff4a5a; text-align: center; border: 1px dashed #ff4a5a; border-radius: 8px;">Falha na conexão com o servidor.</div>`;
+  }
+}
+
+function getAbaColumns(abaName){
+  if (abaName === "AGUARDANDO EMBARQUE") {
+    return [
+      { key: 'EXP', label: 'EXP' },
+      { key: 'EXPORTADOR', label: 'Exportador' },
+      { key: 'IMPORTADOR', label: 'Importador' },
+      { key: 'CONTAINER', label: 'Contêiner' },
+      { key: 'NAVIO', label: 'Navio' },
+      { key: 'BOOKING', label: 'Booking' },
+      { key: 'DATA ESTUFAGEM', label: 'Estufagem' },
+      { key: 'D/L CARGA', label: 'D/L Carga' },
+      { key: 'ETA', label: 'ETA' },
+      { key: 'ORIGEM', label: 'Origem' },
+      { key: 'DESTINO', label: 'Destino' },
+      { key: 'ARMADOR', label: 'Armador' }
+    ];
+  } else if (abaName === "DRAFT") {
+    return [
+      { key: 'EXP', label: 'EXP' },
+      { key: 'EXPORTADOR', label: 'Exportador' },
+      { key: 'CONTAINER', label: 'Contêiner' },
+      { key: 'NAVIO', label: 'Navio' },
+      { key: 'BOOKING', label: 'Booking' },
+      { key: 'D/L DRAFT', label: 'D/L Draft' },
+      { key: 'D/L CARGA', label: 'D/L Carga' },
+      { key: 'ORIGEM', label: 'Origem' },
+      { key: 'DESTINO', label: 'Destino' },
+      { key: 'ARMADOR', label: 'Armador' },
+      { key: 'RUC', label: 'RUC' },
+      { key: 'CONFERIDO', label: 'Conferido' },
+      { key: 'ENVIADO', label: 'Enviado' }
+    ];
+  } else if (abaName === "DUE") {
+    return [
+      { key: 'EXP', label: 'EXP' },
+      { key: 'EXPORTADOR', label: 'Exportador' },
+      { key: 'CONTAINER', label: 'Contêiner' },
+      { key: 'NAVIO', label: 'Navio' },
+      { key: 'D/L CARGA', label: 'D/L Carga' },
+      { key: 'ARMADOR', label: 'Armador' },
+      { key: 'ORIGEM', label: 'Origem' },
+      { key: 'DESTINO', label: 'Destino' },
+      { key: 'RUC', label: 'RUC' },
+      { key: 'DUE', label: 'DUE' },
+      { key: 'Nº DUE', label: 'Nº DUE' },
+      { key: 'DATA REGISTRO', label: 'Registro' },
+      { key: 'LPCO', label: 'LPCO' }
+    ];
+  } else if (abaName === "RODOVIARIO") {
+    return [
+      { key: 'EXP', label: 'EXP' },
+      { key: 'EXPORTADOR', label: 'Exportador' },
+      { key: 'RUC', label: 'RUC' },
+      { key: 'IMPORTADOR', label: 'Importador' },
+      { key: 'FRONTEIRA', label: 'Fronteira' },
+      { key: 'DESTINO', label: 'Destino' },
+      { key: 'PAÍS', label: 'País' },
+      { key: 'TRANSPORTADORA', label: 'Transportadora' },
+      { key: 'CAVALO', label: 'Cavalo' },
+      { key: 'CARRETA', label: 'Carreta' },
+      { key: 'DUE', label: 'DUE' },
+      { key: 'LIBERAÇÃO - BR', label: 'Liberação BR' }
+    ];
+  } else { // USO MARFRIG
+    return [
+      { key: 'Referência', label: 'Referência' },
+      { key: 'Exportador', label: 'Exportador' },
+      { key: 'Container', label: 'Contêiner' },
+      { key: 'Navio', label: 'Navio' },
+      { key: 'Importador', label: 'Importador' },
+      { key: 'D/L Carga', label: 'D/L Carga' },
+      { key: 'ETA', label: 'ETA' },
+      { key: 'Terminal Atracação', label: 'Terminal' },
+      { key: 'Booking', label: 'Booking' },
+      { key: 'Origem', label: 'Origem' },
+      { key: 'Destino', label: 'Destino' },
+      { key: 'Armador', label: 'Armador' },
+      { key: 'Produto', label: 'Produto' },
+      { key: 'DUE/RUC', label: 'DUE/RUC' }
+    ];
+  }
+}
+
+function renderProcessosTable(data, abaName, term = '', matchingCount = 0){
+  const tableArea = document.getElementById('processosTableArea');
+  if(!tableArea) return;
+
+  if (data.length === 0) {
+    tableArea.innerHTML = `<div style="padding: 30px; text-align: center; color: var(--muted);">Nenhum processo encontrado.</div>`;
+    return;
+  }
+
+  const cols = getAbaColumns(abaName);
+  
+  let countText = '';
+  if (term) {
+    countText = `Exibindo <strong>${data.length}</strong> registro(s) (<strong>${matchingCount}</strong> em destaque no topo).`;
+  } else {
+    countText = `Exibindo <strong>${data.length}</strong> registro(s).`;
+  }
+  
+  let html = `
+    <div style="margin-bottom: 10px; font-size: 13px; color: var(--muted);">${countText}</div>
+    <div class="process-table-container">
+      <table class="process-table">
+        <thead>
+          <tr>
+            ${cols.map(c => `<th>${c.label}</th>`).join('')}
+          </tr>
+        </thead>
+        <tbody id="processosTableBody">
+          ${data.map((row, index) => {
+            let rowClass = '';
+            if (term) {
+              if (index < matchingCount) {
+                rowClass = 'row-highlight';
+              } else {
+                rowClass = 'row-dimmed';
+              }
+            }
+            return `
+              <tr class="${rowClass}">
+                ${cols.map(c => {
+                  const val = row[c.key] === undefined || row[c.key] === null ? '' : row[c.key];
+                  return `<td title="${val}">${val}</td>`;
+                }).join('')}
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  tableArea.innerHTML = html;
+}
+
+function filterTableData(query){
+  const activeBtn = document.querySelector('.process-tab-btn.active');
+  if (!activeBtn) return;
+  const abaName = activeBtn.dataset.aba;
+  
+  const term = query.toLowerCase().trim();
+  
+  if (!term) {
+    renderProcessosTable(currentProcessosData, abaName, '', 0);
+    return;
+  }
+
+  const fieldsToFilter = [
+    'CONTAINER', 'Container', 'BOOKING', 'Booking', 
+    'EXPORTADOR', 'Exportador', 'NAVIO', 'Navio', 
+    'EXP', 'Referência', 'RUC', 'DUE', 'Nº DUE', 'DUE/RUC',
+    'IMPORTADOR', 'Importador', 'Produto'
+  ];
+
+  const matchingRows = [];
+  const nonMatchingRows = [];
+
+  currentProcessosData.forEach(row => {
+    const isMatch = fieldsToFilter.some(field => {
+      const val = row[field];
+      if (val === undefined || val === null) return false;
+      return String(val).toLowerCase().includes(term);
+    });
+    
+    if (isMatch) {
+      matchingRows.push(row);
+    } else {
+      nonMatchingRows.push(row);
+    }
+  });
+
+  const orderedData = [...matchingRows, ...nonMatchingRows];
+  renderProcessosTable(orderedData, abaName, term, matchingRows.length);
 }

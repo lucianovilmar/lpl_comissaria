@@ -7,5 +7,9 @@
     "start": "node server.js"
   },
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "puppeteer-core": "^22.11.2",
+    "xlsx": "^0.18.5"
+  }
 }

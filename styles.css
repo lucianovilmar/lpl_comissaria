@@ -13,6 +13,7 @@
 	--btn-active-color: #fff;
 	--output-bg: #f8f8f8;
 	--border: #e6e6e6;
+	--row-highlight-bg: rgba(0, 187, 85, 0.12);
 }
 
 .theme-dark{
@@ -28,6 +29,7 @@
 	--btn-active-color: #fff;
 	--output-bg: #071826;
 	--border: #163241;
+	--row-highlight-bg: rgba(10, 132, 255, 0.12);
 }
 
 body{margin:0;color:var(--text);background:var(--bg)}
@@ -53,3 +55,154 @@ body{margin:0;color:var(--text);background:var(--bg)}
 .field input{width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;background:transparent;color:var(--text)}
 .output{min-width:220px;padding:8px;border-radius:6px;background:var(--output-bg);border:1px dashed var(--border);color:var(--text)}
 .small{font-size:13px;color:var(--muted)}
+
+/* Novos estilos para LPL Planilha e Consulta de Contêineres */
+.badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-weight: bold;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.badge-tcp { background-color: #0056b3; color: #ffffff; }
+.badge-poa { background-color: #28a745; color: #ffffff; }
+.badge-nav { background-color: #6f42c1; color: #ffffff; }
+.badge-tec { background-color: #fd7e14; color: #ffffff; }
+
+.api-status-card {
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.spinner-inline {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(255,255,255,0.1);
+  border-radius: 50%;
+  border-top-color: var(--btn-active-bg);
+  animation: spin-loading 1s linear infinite;
+}
+
+@keyframes spin-loading {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse-active {
+  0% { box-shadow: 0 0 0 0 rgba(10, 132, 255, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(10, 132, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(10, 132, 255, 0); }
+}
+
+/* Estilos adicionais para o Painel de Gestão de Processos */
+.kpi-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.kpi-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all 0.3s ease;
+}
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.kpi-title {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.kpi-value {
+  font-size: 24px;
+  font-weight: bold;
+  color: var(--text);
+}
+.process-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+  margin-bottom: 20px;
+  overflow-x: auto;
+}
+.process-tab-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.process-tab-btn:hover {
+  color: var(--text);
+  background: rgba(255,255,255,0.02);
+}
+.process-tab-btn.active {
+  background: var(--btn-active-bg);
+  color: var(--btn-active-color);
+  border-color: var(--btn-active-bg);
+}
+.process-table-container {
+  overflow-x: auto;
+  max-height: 500px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.01);
+}
+.process-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+.process-table th {
+  background: var(--sidebar-bg);
+  color: var(--text);
+  font-weight: 600;
+  padding: 10px 12px;
+  border-bottom: 2px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.process-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  max-width: 250px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.process-table tr:hover td {
+  background: rgba(255,255,255,0.02);
+}
+
+.process-table tr.row-highlight td {
+  background-color: var(--row-highlight-bg) !important;
+  font-weight: bold;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+.process-table tr.row-highlight {
+  border-left: 4px solid var(--btn-active-bg);
+}
+.process-table tr.row-dimmed {
+  opacity: 0.45;
+}
+.process-table tr.row-dimmed:hover {
+  opacity: 0.8;
+}

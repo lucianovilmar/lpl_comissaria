@@ -1,0 +1,27 @@
+[
+  {
+    "login": "LVS",
+    "senha": "123456",
+    "email": "lucianovs.lpl@gmail.com"
+  },
+  {
+    "login": "Petterson",
+    "senha": "Gondorek",
+    "email": "petterson.gondorek@lplcomissaria.com.br"
+  },
+  {
+    "login": "Antonio",
+    "senha": "N2t7Temporario",
+    "email": "antonio.neto@lplcomissaria.com.br"
+  },
+  {
+    "login": "Lorran",
+    "senha": "L8rR0nTemporario",
+    "email": "lorran@lplcomissaria.com.br"
+  },
+  {
+    "login": "Dimitri",
+    "senha": "diMitriTemporario",
+    "email": "dimitri@lplcomissaria.com.br"
+  }
+]
