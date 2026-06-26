@@ -127,61 +127,22 @@ async function queryTCP(containerCode) {
     tcpIdleTimer = null;
   }
 
-  let browser = activeBrowserTCP;
-  let page = activePageTCP;
-  let isReused = false;
-
-  // 1. Tentar reutilizar o navegador e página ativos
-  if (browser && browser.connected) {
-    try {
-      const pages = await browser.pages();
-      if (pages.length > 0) {
-        page = pages[0];
-        // Verificar se a sessão ainda está ativa
-        const needsLogin = await page.evaluate(() => {
-          return document.querySelector('input[type="password"]') !== null || !window.location.href.includes('consulta-geral');
-        }).catch(() => true);
-
-        if (!needsLogin) {
-          console.log('TCP: Reutilizando navegador ativo e sessão existente para o contêiner ' + containerCode);
-          isReused = true;
-          activePageTCP = page;
-        } else {
-          console.log('TCP: Sessão expirada na janela reutilizada. Reiniciando navegador...');
-          try { await browser.close(); } catch (e) {}
-          browser = null;
-          page = null;
-          activeBrowserTCP = null;
-          activePageTCP = null;
-        }
-      }
-    } catch (e) {
-      console.log('TCP: Erro ao verificar navegador ativo:', e.message);
-      browser = null;
-      page = null;
-      activeBrowserTCP = null;
-      activePageTCP = null;
-    }
-  } else {
-    browser = null;
-    page = null;
-    activeBrowserTCP = null;
-    activePageTCP = null;
-  }
+  let browser = null;
+  let page = null;
+  const isReused = false;
 
   try {
-    // Se não puder reutilizar, inicia uma nova instância do navegador
-    if (!isReused) {
+    if (true) {
       const savedCookies = loadCookies(COOKIES_PATH_TCP);
       let shouldRunVisibleLogin = false;
 
       console.log('TCP: Abrindo nova instância do navegador...');
       const launchOptions = {
         headless: true,
-        defaultViewport: null,
         args: [
           '--no-sandbox',
-          '--disable-setuid-sandbox'
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage'
         ]
       };
       if (chromePath) {
@@ -211,7 +172,7 @@ async function queryTCP(containerCode) {
 
       try {
         console.log('TCP: Navegando para página inicial para estabelecer sessão WAF...');
-        await page.goto('https://portal.tcp.com.br/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.goto('https://portal.tcp.com.br/', { waitUntil: 'domcontentloaded' });
 
         if (savedCookies) {
           // Filtrar cookies do WAF Imperva (incap_ses, visid_incap, nlbi) para não sobrescrever os cookies válidos
@@ -226,7 +187,7 @@ async function queryTCP(containerCode) {
         }
 
         console.log('TCP: Navegando de forma invisível para área de consulta...');
-        await page.goto('https://portal.tcp.com.br/consulta-geral/conteineres', { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.goto('https://portal.tcp.com.br/consulta-geral/conteineres', { waitUntil: 'domcontentloaded' });
 
         console.log('TCP: Aguardando carregamento da página ou redirecionamento de login...');
         let resolvedSelector = null;
@@ -326,8 +287,9 @@ async function queryTCP(containerCode) {
 
       // Garantir a seleção da empresa MARFRIG no cabeçalho
       const isCompanySelected = await page.evaluate(() => {
-        const header = document.querySelector('header') || document.querySelector('.header') || document.body;
-        const text = header ? (header.textContent || '') : '';
+        const header = document.querySelector('header') || document.querySelector('.header') || document.querySelector('.navbar');
+        if (!header) return false;
+        const text = header.textContent || '';
         return text.includes('03.853.896/0003-01') || text.includes('MARFRIG');
       });
 
@@ -335,14 +297,9 @@ async function queryTCP(containerCode) {
         console.log('TCP: Selecionando MARFRIG CNPJ 03.853.896/0003-01 no cabeçalho...');
         try {
           const combinedSelector = '[angularticsaction="Abrir Seleção Empresa"], [angularticsaction="Abrir Seleção de Procuração"]';
-          let exists = false;
-          for (let i = 0; i < 30; i++) {
-            exists = await page.evaluate((sel) => document.querySelector(sel) !== null, combinedSelector);
-            if (exists) break;
-            await new Promise(resolve => setTimeout(resolve, 500));
-          }
+          const exists = await page.evaluate((sel) => document.querySelector(sel) !== null, combinedSelector);
           if (!exists) {
-            throw new Error('Botão de seleção de empresa/procuração não apareceu no cabeçalho.');
+            throw new Error('Botão de seleção de empresa/procuração não localizado no cabeçalho.');
           }
 
           const companySelector = await page.evaluate(() => {
@@ -360,12 +317,9 @@ async function queryTCP(containerCode) {
             if (el) el.click();
           }, companySelector);
           
-          let filterExists = false;
-          for (let i = 0; i < 30; i++) {
-            filterExists = await page.evaluate(() => document.querySelector('input[formcontrolname="filtro"]') !== null);
-            if (filterExists) break;
-            await new Promise(resolve => setTimeout(resolve, 500));
-          }
+          await new Promise(resolve => setTimeout(resolve, 3000)); // wait for modal animation
+          
+          const filterExists = await page.evaluate(() => document.querySelector('input[formcontrolname="filtro"]') !== null);
           if (!filterExists) {
             throw new Error('Campo de filtro não apareceu no modal de empresas.');
           }
@@ -409,34 +363,12 @@ async function queryTCP(containerCode) {
         }
       }
 
-      // Guardar a instância ativa globalmente
-      activeBrowserTCP = browser;
-      activePageTCP = page;
-    }
-
-    // Se estivermos reutilizando a página e não estiver na URL de consulta, redirecionar
-    if (isReused) {
-      const currentUrl = page.url();
-      if (!currentUrl.includes('consulta-geral/conteineres')) {
-        console.log('TCP: Navegando de volta para a página de consulta de contêineres...');
-        await page.goto('https://portal.tcp.com.br/consulta-geral/conteineres', { waitUntil: 'domcontentloaded', timeout: 30000 });
-      }
     }
 
     const searchInputSelector = 'input#search';
-    let searchExists = false;
-    for (let i = 0; i < 30; i++) {
-      searchExists = await page.evaluate((sel) => document.querySelector(sel) !== null, searchInputSelector);
-      if (searchExists) break;
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
+    const searchExists = await page.evaluate((sel) => document.querySelector(sel) !== null, searchInputSelector);
     if (!searchExists) {
       throw new Error('Campo de busca input#search não localizado na página.');
-    }
-    
-    if (!isReused) {
-      console.log('TCP: Aguardando estabilização dos bindings do Angular (2.5s)...');
-      await new Promise(resolve => setTimeout(resolve, 2500));
     }
     
     console.log('TCP: Preenchendo campo de busca com ' + containerCode + '...');
@@ -450,38 +382,23 @@ async function queryTCP(containerCode) {
       const btn = document.querySelector('button.submit-button');
       if (btn) btn.click();
     }, searchInputSelector, containerCode);
-    console.log('TCP: Botão de busca clicado.');
+    console.log('TCP: Botão de busca clicado, aguardando 6 segundos por resultados...');
 
-    // Esperar a tabela lateral com resultados ou mensagem de "não encontrado"
+    // Esperar resultados carregarem sem fazer polling excessivo
+    await new Promise(resolve => setTimeout(resolve, 6000));
+
     let hasResults = false;
     try {
-      let isFinished = false;
-      for (let i = 0; i < 30; i++) {
-        console.log('TCP: Aguardando resultados, tentativa ' + (i + 1) + '/30...');
-        const state = await page.evaluate(() => {
-          const text = document.body.textContent || '';
-          const sideTable = document.querySelector('app-conteiner-side-table');
-          const hasContainer = sideTable && sideTable.querySelector('a') !== null;
-          const noResults = text.includes('Não foi possível encontrar') || 
-                             text.includes('Nenhum contêiner') || 
-                             text.includes('Não encontrado') || 
-                             text.includes('Nenhum registro');
-          return { finished: hasContainer || noResults, success: hasContainer };
-        });
-        
-        if (state.finished) {
-          hasResults = state.success;
-          isFinished = true;
-          break;
-        }
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-      
-      if (!isFinished) {
-        throw new Error('Timeout aguardando os resultados da busca');
-      }
+      const state = await page.evaluate(() => {
+        const mainContent = document.querySelector('app-conteiner-consulta-geral') || document.querySelector('main') || document.body;
+        const text = mainContent ? (mainContent.textContent || '') : '';
+        const sideTable = document.querySelector('app-conteiner-side-table');
+        const hasContainer = sideTable && sideTable.querySelector('a') !== null;
+        return { finished: hasContainer || text.includes('Não encontrado') || text.includes('Não foi possível encontrar'), success: hasContainer };
+      });
+      hasResults = state.success;
     } catch (e) {
-      console.log('TCP: Timeout aguardando resultados do contêiner ' + containerCode);
+      console.log('TCP: Erro ao verificar resultados do contêiner ' + containerCode);
     }
 
     console.log('TCP: Resultados localizados? ' + hasResults);
@@ -501,17 +418,12 @@ async function queryTCP(containerCode) {
 
     // Garantir que as abas de detalhes carregaram
     try {
-      let tabsExists = false;
-      for (let i = 0; i < 20; i++) {
-        tabsExists = await page.evaluate(() => document.querySelector('.mat-tab-label, [role="tab"]') !== null);
-        if (tabsExists) break;
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
+      const tabsExists = await page.evaluate(() => document.querySelector('.mat-tab-label, [role="tab"]') !== null);
       if (!tabsExists) {
         console.log('TCP: Abas não localizadas na página de detalhes.');
       }
     } catch (e) {
-      console.log('TCP: Erro ao aguardar abas de detalhes.');
+      console.log('TCP: Erro ao verificar abas de detalhes.');
     }
 
     // 1. Extrair Stepper de Progresso (Entrada, Aduaneiro, Embarque, Faturamento)
@@ -664,13 +576,17 @@ async function queryTCP(containerCode) {
     });
 
     // Resetar para a aba Situação para a próxima consulta
-    await page.evaluate(() => {
-      const tabs = Array.from(document.querySelectorAll('.mat-tab-label, .mat-tab-link, [role="tab"]'));
-      const target = tabs.find(t => t.innerText.includes('Situação'));
-      if (target) target.click();
-    });
+    try {
+      await page.evaluate(() => {
+        const tabs = Array.from(document.querySelectorAll('.mat-tab-label, .mat-tab-link, [role="tab"]'));
+        const target = tabs.find(t => t.innerText.includes('Situação'));
+        if (target) target.click();
+      });
+    } catch (e) {}
 
-    resetTcpIdleTimer();
+    if (browser) {
+      try { await browser.close(); } catch(e) {}
+    }
 
     return {
       api: 'TCP',
@@ -749,8 +665,14 @@ async function queryPOA(containerCode, bookingCode) {
     const savedCookies = loadCookies(COOKIES_PATH_POA);
     const launchOptions = {
       headless: true,
-      defaultViewport: null,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-web-security']
+      defaultViewport: { width: 1280, height: 800 },
+      protocolTimeout: 60000,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-web-security',
+        '--disable-dev-shm-usage'
+      ]
     };
     if (chromePath) {
       launchOptions.executablePath = chromePath;
@@ -907,8 +829,14 @@ async function queryNAV(containerCode) {
     const savedCookies = loadCookies(COOKIES_PATH_NAV);
     const launchOptions = {
       headless: true,
-      defaultViewport: null,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-web-security']
+      defaultViewport: { width: 1280, height: 800 },
+      protocolTimeout: 60000,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-web-security',
+        '--disable-dev-shm-usage'
+      ]
     };
     if (chromePath) {
       launchOptions.executablePath = chromePath;
@@ -1071,8 +999,14 @@ async function queryTEC(containerCode) {
     
     const launchOptions = {
       headless: true,
-      defaultViewport: null,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-web-security']
+      defaultViewport: { width: 1280, height: 800 },
+      protocolTimeout: 60000,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-web-security',
+        '--disable-dev-shm-usage'
+      ]
     };
     if (chromePath) {
       launchOptions.executablePath = chromePath;
@@ -1272,17 +1206,16 @@ async function queryTEC(containerCode) {
   }
 }
 
-// Main runner for parallel tracking
+// Main runner for sequential tracking (to save memory on Render)
 async function trackContainer(containerCode, bookingCode) {
   const code = containerCode.trim().toUpperCase();
   
-  // Executar consultas em paralelo
-  const [tcpRes, poaRes, navRes, tecRes] = await Promise.all([
-    queryTCP(code).catch(err => ({ error: 'erro api', message: err.message })),
-    queryPOA(code, bookingCode).catch(err => ({ error: 'erro api', message: err.message })),
-    queryNAV(code).catch(err => ({ error: 'erro api', message: err.message })),
-    queryTEC(code).catch(err => ({ error: 'erro api', message: err.message }))
-  ]);
+  console.log(`[trackContainer] Iniciando busca sequencial para economizar memória...`);
+  
+  const tcpRes = await queryTCP(code).catch(err => ({ error: 'erro api', message: err.message }));
+  const poaRes = await queryPOA(code, bookingCode).catch(err => ({ error: 'erro api', message: err.message }));
+  const navRes = await queryNAV(code).catch(err => ({ error: 'erro api', message: err.message }));
+  const tecRes = await queryTEC(code).catch(err => ({ error: 'erro api', message: err.message }));
 
   const results = [];
   const statuses = {};
