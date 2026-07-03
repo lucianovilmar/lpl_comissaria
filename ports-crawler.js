@@ -214,7 +214,7 @@ async function queryTCP(containerCode) {
 
       try {
         console.log('TCP: Navegando para página inicial para estabelecer sessão WAF...');
-        await page.goto('https://portal.tcp.com.br/', { waitUntil: 'domcontentloaded' });
+        await page.goto('https://portal.tcp.com.br/', { waitUntil: 'domcontentloaded', timeout: 15000 });
 
         if (savedCookies) {
           // Filtrar cookies do WAF Imperva (incap_ses, visid_incap, nlbi) para não sobrescrever os cookies válidos
@@ -229,7 +229,7 @@ async function queryTCP(containerCode) {
         }
 
         console.log('TCP: Navegando de forma invisível para área de consulta...');
-        await page.goto('https://portal.tcp.com.br/consulta-geral/conteineres', { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.goto('https://portal.tcp.com.br/consulta-geral/conteineres', { waitUntil: 'domcontentloaded', timeout: 15000 });
 
         console.log('TCP: Verificando URL após navegação...');
         const currentUrl = page.url();
