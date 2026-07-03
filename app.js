@@ -44,9 +44,6 @@ function setupSidebar() {
   // 2. Calculo de Itens (Livre para todos)
   sidebar.innerHTML += `<button class="nav-btn" data-page="teste">Calculo de Itens</button>`;
   
-  // 3. Green Teste (Livre, mas com senha secundária)
-  sidebar.innerHTML += `<button class="nav-btn green-test" data-page="green">Green Teste</button>`;
-  
   // 4. LPL Planilha & Gestão (Somente se can_view_processes for true)
   if (sessionStorage.getItem('lpl_can_view_processes') === 'true') {
     sidebar.innerHTML += `<button class="nav-btn" data-page="planilha">Gerar Planilha</button>`;
@@ -60,7 +57,7 @@ function setupSidebar() {
   
   // 6. Painel Admin (Somente para Administradores)
   if (sessionStorage.getItem('lpl_is_admin') === 'true') {
-    sidebar.innerHTML += `<button class="nav-btn" data-page="admin" style="border-left: 3px solid var(--btn-active-bg); font-weight: 600; color: var(--btn-active-bg);">Painel Admin</button>`;
+    sidebar.innerHTML += `<button class="nav-btn" data-page="admin" style="border-left: 3px solid var(--btn-active-bg); font-weight: 600;">Painel Admin</button>`;
   }
   
   // 7. Botão Sair (Logout)
@@ -77,9 +74,6 @@ function setupSidebar() {
       return;
     }
     btn.addEventListener('click', () => {
-      if(btn.dataset.page === 'green' && !requestGreenAccess()){
-        return;
-      }
       navButtons.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       loadPage(btn.dataset.page);
@@ -2786,7 +2780,10 @@ async function loadAdminUsers() {
           <td style="text-align: center;">
             <div style="display: flex; gap: 8px; justify-content: center;">
               <button class="admin-action-btn" onclick="openUserModal(${JSON.stringify(u).replace(/"/g, '&quot;')})">✏️ Editar</button>
-              <button class="admin-action-btn admin-action-btn-danger" onclick="deleteUser(${u.id}, '${u.login}')">🗑️ Excluir</button>
+              <button class="admin-action-btn" onclick="resetUserPassword(${u.id}, '${u.login}')">🔑 Resetar Senha</button>
+              ${u.ativo !== false 
+                ? `<button class="admin-action-btn admin-action-btn-danger" onclick="toggleUserStatus(${u.id}, false, '${u.login}')">🔒 Inativar</button>` 
+                : `<button class="admin-action-btn" style="border-color: rgba(16, 185, 129, 0.4); color: #34d399;" onclick="toggleUserStatus(${u.id}, true, '${u.login}')">🔓 Ativar</button>`}
             </div>
           </td>
         </tr>
@@ -2950,27 +2947,68 @@ async function saveUser(e, userId) {
   }
 }
 
-async function deleteUser(userId, username) {
-  if (!confirm(`Tem certeza de que deseja excluir permanentemente o usuário "${username}"?`)) {
+async function toggleUserStatus(userId, status, username) {
+  const actionText = status ? 'ativar' : 'inativar';
+  if (!confirm(`Tem certeza de que deseja ${actionText} o usuário "${username}"?`)) {
     return;
   }
   
   const token = sessionStorage.getItem('lpl_token');
   try {
+    const usersResponse = await fetch('/api/admin/users', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const users = await usersResponse.json();
+    const userObj = users.find(u => u.id === userId);
+    if (!userObj) return;
+
+    const payload = {
+      ...userObj,
+      ativo: status
+    };
+
     const response = await fetch(`/api/admin/users/${userId}`, {
-      method: 'DELETE',
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    });
+    
+    if (response.ok) {
+      loadAdminUsers();
+    } else {
+      const resJson = await response.json();
+      alert(resJson.error || 'Erro ao alterar status do usuário.');
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Erro de rede ao alterar status.');
+  }
+}
+
+async function resetUserPassword(userId, username) {
+  if (!confirm(`Tem certeza de que deseja resetar a senha do usuário "${username}"? Uma nova senha temporária será gerada e enviada por e-mail.`)) {
+    return;
+  }
+  
+  const token = sessionStorage.getItem('lpl_token');
+  try {
+    const response = await fetch(`/api/admin/users/${userId}/reset-password`, {
+      method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` }
     });
     
     const result = await response.json();
-    if (response.ok) {
-      loadAdminUsers();
+    if (response.ok && result.success) {
+      alert(result.message);
     } else {
-      alert(result.error || 'Erro ao excluir usuário.');
+      alert(result.error || 'Erro ao resetar senha.');
     }
   } catch (err) {
     console.error(err);
-    alert('Erro de rede ao excluir usuário.');
+    alert('Erro de rede ao resetar senha.');
   }
 }
 

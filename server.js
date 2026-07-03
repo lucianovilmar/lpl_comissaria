@@ -678,6 +678,20 @@ const server = http.createServer(async (req, res) => {
     try {
       const { login, email, senha, is_admin, can_view_processes, can_query_ports, can_upload_cookies, ativo } = await readJsonBody(req);
       
+      // Prevenir que um administrador desative a si mesmo
+      if (adminUser.id === userId && ativo === false) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Você não pode desativar sua própria conta de administrador ativa.' }));
+        return;
+      }
+      
+      // Prevenir que um administrador remova sua própria permissão admin
+      if (adminUser.id === userId && is_admin === false) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Você não pode revogar sua própria permissão de administrador.' }));
+        return;
+      }
+
       // Validações básicas
       if (!login || !email) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -733,12 +747,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Endpoint 9: DELETE /api/admin/users/:id
-  if (reqPath.startsWith('/api/admin/users/') && req.method === 'DELETE') {
+  // Endpoint 9: POST /api/admin/users/:id/reset-password
+  if (reqPath.startsWith('/api/admin/users/') && reqPath.endsWith('/reset-password') && req.method === 'POST') {
     const adminUser = checkAdmin(req, res);
     if (!adminUser) return;
     
-    const idStr = reqPath.substring('/api/admin/users/'.length);
+    const idStr = reqPath.substring('/api/admin/users/'.length, reqPath.length - '/reset-password'.length);
     const userId = parseInt(idStr, 10);
     if (isNaN(userId)) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -746,21 +760,56 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     
-    // Prevenir que um administrador delete a si mesmo
-    if (adminUser.id === userId) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Você não pode excluir sua própria conta de administrador ativa.' }));
-      return;
-    }
-    
     try {
-      await db.query('DELETE FROM usuarios WHERE id = $1', [userId]);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, message: 'Usuário excluído com sucesso!' }));
+      const userRes = await db.query('SELECT login, email FROM usuarios WHERE id = $1', [userId]);
+      if (userRes.rows.length === 0) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Usuário não encontrado.' }));
+        return;
+      }
+      
+      const user = userRes.rows[0];
+      if (!user.email) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Usuário não possui e-mail cadastrado.' }));
+        return;
+      }
+      
+      const tempPass = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const hash = bcrypt.hashSync(tempPass, 10);
+      
+      await db.query('UPDATE usuarios SET senha = $1 WHERE id = $2', [hash, userId]);
+      
+      const subject = 'Redefinição de Senha Requerida - LPL Comissária';
+      const htmlBody = `
+        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+          <h2 style="color: #0f172a;">Redefinição de Senha Requerida</h2>
+          <p>Olá, <strong>${user.login}</strong>.</p>
+          <p>O administrador solicitou o **reset da sua senha** de acesso ao Painel LPL.</p>
+          <p>Use a seguinte senha temporária para acessar o sistema e cadastrar sua nova senha:</p>
+          <div style="background: #f1f5f9; padding: 12px; font-size: 20px; font-weight: bold; text-align: center; border-radius: 6px; letter-spacing: 2px; margin: 20px 0;">
+            ${tempPass}
+          </div>
+          <p style="color: #ef4444; font-size: 13px;"><strong>Importante:</strong> Recomendamos alterar esta senha assim que fizer o login em sua conta.</p>
+          <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+          <p style="font-size: 12px; color: #64748b;">LPL Comissária de Despachos Ltda. - Itajaí/SC</p>
+        </div>
+      `;
+      const textBody = `Olá, ${user.login}.\n\nO administrador solicitou o reset da sua senha de acesso ao Painel LPL.\n\nSua nova senha temporária de acesso é: ${tempPass}\n\nRecomendamos alterar sua senha após efetuar o login.`;
+      
+      const emailSent = await enviarEmail(user.email, subject, htmlBody, textBody);
+      
+      if (emailSent) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, message: 'Senha resetada e nova senha temporária enviada por e-mail com sucesso!' }));
+      } else {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Erro ao disparar o e-mail de redefinição. Tente novamente mais tarde.' }));
+      }
     } catch (err) {
-      console.error('Error deleting user:', err);
+      console.error('Error resetting password:', err);
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Erro ao excluir usuário no banco.' }));
+      res.end(JSON.stringify({ error: 'Erro ao redefinir a senha do usuário.' }));
     }
     return;
   }
