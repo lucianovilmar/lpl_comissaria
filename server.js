@@ -1,7 +1,6 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const url = require('url');
 const XLSX = require('xlsx');
 const { trackContainer, queryTCP, queryPOA, queryNAV, queryTEC } = require('./ports-crawler');
 
@@ -167,6 +166,55 @@ function readJsonBody(req) {
   });
 }
 
+function forwardToLocalAgent(req, res, targetUrlStr) {
+  return new Promise((resolve) => {
+    try {
+      const targetUrl = new URL(targetUrlStr);
+      const isHttps = targetUrl.protocol === 'https:';
+      const client = isHttps ? require('https') : require('http');
+      
+      const reqUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const targetPath = reqUrl.pathname + reqUrl.search;
+      
+      const options = {
+        hostname: targetUrl.hostname,
+        port: targetUrl.port || (isHttps ? 443 : 80),
+        path: targetPath,
+        method: req.method,
+        headers: {
+          ...req.headers,
+          host: targetUrl.host
+        }
+      };
+      
+      console.log(`Encaminhando requisição para o Agente Local: ${options.method} ${targetUrl.protocol}//${options.hostname}${options.path}`);
+      
+      const proxyReq = client.request(options, (proxyRes) => {
+        res.writeHead(proxyRes.statusCode, proxyRes.headers);
+        proxyRes.pipe(res, { end: true });
+        resolve();
+      });
+      
+      proxyReq.on('error', (err) => {
+        console.error('Erro ao encaminhar para o Agente Local:', err.message);
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+          error: 'Erro de gateway', 
+          message: 'Não foi possível conectar ao Agente Local de Consulta. Verifique se o computador no escritório está ligado com o ngrok ativo.' 
+        }));
+        resolve();
+      });
+      
+      req.pipe(proxyReq, { end: true });
+    } catch (e) {
+      console.error('Erro ao configurar proxy de requisição:', e);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'erro interno', message: e.message }));
+      resolve();
+    }
+  });
+}
+
 const server = http.createServer(async (req, res) => {
   // CORS Support
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -179,8 +227,15 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  const parsedUrl = url.parse(req.url, true);
+  const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const reqPath = decodeURIComponent(parsedUrl.pathname);
+
+  // Se a variável de ambiente SCRAPER_LOCAL_URL estiver definida, encaminha busca e cookies para o agente local
+  const SCRAPER_LOCAL_URL = process.env.SCRAPER_LOCAL_URL;
+  if (SCRAPER_LOCAL_URL && (reqPath === '/api/search' || reqPath === '/api/upload-cookies')) {
+    await forwardToLocalAgent(req, res, SCRAPER_LOCAL_URL);
+    return;
+  }
 
   // Endpoint 1: POST /api/login
   if (reqPath === '/api/login' && req.method === 'POST') {
@@ -241,9 +296,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Endpoint 2: GET /api/search
   if (reqPath === '/api/search' && req.method === 'GET') {
-    const containerParam = parsedUrl.query.container;
+    const containerParam = parsedUrl.searchParams.get('container');
     if (!containerParam) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Falta o parâmetro container' }));
@@ -265,7 +319,7 @@ const server = http.createServer(async (req, res) => {
         tec: { status: 'success', message: 'Não consultado' }
       };
       
-      const targetPort = (parsedUrl.query.port || '').toLowerCase();
+      const targetPort = (parsedUrl.searchParams.get('port') || '').toLowerCase();
       
       for (const code of containerCodes) {
         console.log(`Consultando contêiner: ${code}...`);
@@ -388,7 +442,7 @@ const server = http.createServer(async (req, res) => {
 
   // Endpoint 4: GET /api/processos
   if (reqPath === '/api/processos' && req.method === 'GET') {
-    const aba = parsedUrl.query.aba || 'AGUARDANDO EMBARQUE';
+    const aba = parsedUrl.searchParams.get('aba') || 'AGUARDANDO EMBARQUE';
     try {
       const data = getProcessosData(aba);
       res.writeHead(200, { 'Content-Type': 'application/json' });

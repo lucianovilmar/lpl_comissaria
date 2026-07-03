@@ -35,6 +35,41 @@ function resetTcpIdleTimer() {
     }
   }, 120000); // 2 minutos de inatividade
 }
+async function evaluateWithTimeout(page, fn, timeoutMs = 15000, ...args) {
+  return page.evaluate(fn, ...args);
+}
+
+
+// Helper to configure Puppeteer launch options with memory optimizations for low-RAM cloud containers
+function getLaunchOptions(extraCustomArgs = []) {
+  const chromePath = getChromePath();
+  const isWin = process.platform === 'win32';
+  const extraArgs = isWin ? [] : [
+    '--single-process',
+    '--no-zygote',
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+    '--js-flags=--max-old-space-size=128'
+  ];
+  
+  const options = {
+    headless: true,
+    defaultViewport: { width: 1280, height: 800 },
+    protocolTimeout: 60000,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-web-security',
+      ...extraArgs,
+      ...extraCustomArgs
+    ]
+  };
+  
+  if (chromePath) {
+    options.executablePath = chromePath;
+  }
+  return options;
+}
 
 // Helper to find Google Chrome path on Windows and Linux (Render)
 function getChromePath() {
@@ -137,22 +172,27 @@ async function queryTCP(containerCode) {
       let shouldRunVisibleLogin = false;
 
       console.log('TCP: Abrindo nova instância do navegador...');
-      const launchOptions = {
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage'
-        ]
-      };
-      if (chromePath) {
-        launchOptions.executablePath = chromePath;
-      }
+      const launchOptions = getLaunchOptions();
+      console.log('TCP Launch Options:', JSON.stringify(launchOptions, null, 2));
       browser = await puppeteer.launch(launchOptions);
 
       page = await browser.newPage();
-      
-      // Evasão de detecção headless (Bypass WAF/Imperva anti-bot)
+
+      page.on('console', msg => console.log(`[TCP BROWSER CONSOLE] [${msg.type()}] ${msg.text()}`));
+      page.on('pageerror', err => console.log(`[TCP BROWSER ERROR] ${err.toString()}`));
+
+      // Fechar diálogos automaticamente (alert/confirm/prompt) para evitar travamento da página
+      page.on('dialog', async dialog => {
+        console.log(`TCP Dialog detected: [${dialog.type()}] ${dialog.message()}`);
+        try {
+          await dialog.dismiss();
+          console.log('TCP Dialog dismissed.');
+        } catch (e) {
+          console.error('TCP: Error dismissing dialog:', e.message);
+        }
+      });
+
+      // Evasão de detecção headless (Bypass WAF/Imperva anti-bot) e Bloqueio de Scripts do Salesforce
       await page.evaluateOnNewDocument(() => {
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
         window.chrome = {
@@ -165,6 +205,8 @@ async function queryTCP(containerCode) {
         };
         Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
         Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en-US', 'en'] });
+
+        // No script blocking of Salesforce Chat is needed since it deadlocks Zone.js
       });
 
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -187,29 +229,18 @@ async function queryTCP(containerCode) {
         }
 
         console.log('TCP: Navegando de forma invisível para área de consulta...');
-        await page.goto('https://portal.tcp.com.br/consulta-geral/conteineres', { waitUntil: 'domcontentloaded' });
+        await page.goto('https://portal.tcp.com.br/consulta-geral/conteineres', { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-        console.log('TCP: Aguardando carregamento da página ou redirecionamento de login...');
-        let resolvedSelector = null;
-        for (let i = 0; i < 60; i++) {
-          resolvedSelector = await page.evaluate(() => {
-            if (document.querySelector('input#search')) return 'search';
-            if (document.querySelector('input[type="password"]')) return 'login';
-            return null;
-          });
-          if (resolvedSelector) break;
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-
-        if (!resolvedSelector) {
-          throw new Error('Timeout aguardando carregamento da página de consulta');
-        }
-
-        if (resolvedSelector === 'login') {
+        console.log('TCP: Verificando URL após navegação...');
+        const currentUrl = page.url();
+        console.log('TCP: URL atual:', currentUrl);
+        if (currentUrl.includes('/login') || currentUrl.includes('login')) {
           throw new Error('Sessão expirada ou redirecionado para login');
         }
-
         console.log('TCP: Autenticação silenciosa bem sucedida!');
+
+        console.log('TCP: Aguardando aparecimento do campo de busca...');
+        await page.waitForSelector('input#search', { timeout: 20000 });
       } catch (gotoErr) {
         console.log('TCP: Falha na autenticação silenciosa (headless):', gotoErr.message);
         try {
@@ -281,98 +312,20 @@ async function queryTCP(containerCode) {
         await page.goto('https://portal.tcp.com.br/consulta-geral/conteineres', { waitUntil: 'domcontentloaded', timeout: 30000 });
       }
 
-      // Aguardar a renderização inicial dos bindings do Angular
-      console.log('TCP: Aguardando estabilização dos bindings do Angular (3s)...');
-      await new Promise(resolve => setTimeout(resolve, 3000));
 
-      // Garantir a seleção da empresa MARFRIG no cabeçalho
-      const isCompanySelected = await page.evaluate(() => {
-        const header = document.querySelector('header') || document.querySelector('.header') || document.querySelector('.navbar');
-        if (!header) return false;
-        const text = header.textContent || '';
-        return text.includes('03.853.896/0003-01') || text.includes('MARFRIG');
-      });
 
-      if (!isCompanySelected) {
-        console.log('TCP: Selecionando MARFRIG CNPJ 03.853.896/0003-01 no cabeçalho...');
-        try {
-          const combinedSelector = '[angularticsaction="Abrir Seleção Empresa"], [angularticsaction="Abrir Seleção de Procuração"]';
-          const exists = await page.evaluate((sel) => document.querySelector(sel) !== null, combinedSelector);
-          if (!exists) {
-            throw new Error('Botão de seleção de empresa/procuração não localizado no cabeçalho.');
-          }
-
-          const companySelector = await page.evaluate(() => {
-            if (document.querySelector('[angularticsaction="Abrir Seleção Empresa"]')) return '[angularticsaction="Abrir Seleção Empresa"]';
-            if (document.querySelector('[angularticsaction="Abrir Seleção de Procuração"]')) return '[angularticsaction="Abrir Seleção de Procuração"]';
-            return null;
-          });
-
-          if (!companySelector) {
-            throw new Error('Botão de seleção de empresa/procuração não localizado no cabeçalho.');
-          }
-
-          await page.evaluate((sel) => {
-            const el = document.querySelector(sel);
-            if (el) el.click();
-          }, companySelector);
-          
-          await new Promise(resolve => setTimeout(resolve, 3000)); // wait for modal animation
-          
-          const filterExists = await page.evaluate(() => document.querySelector('input[formcontrolname="filtro"]') !== null);
-          if (!filterExists) {
-            throw new Error('Campo de filtro não apareceu no modal de empresas.');
-          }
-          await page.evaluate(() => {
-            const input = document.querySelector('input[formcontrolname="filtro"]');
-            if (input) {
-              input.value = '03.853.896/0003-01';
-              input.dispatchEvent(new Event('input', { bubbles: true }));
-              input.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-          });
-          
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          
-          await page.evaluate(() => {
-            const selectors = [
-              'li',
-              '.mat-list-item',
-              '.empresa-dados',
-              '[angularticsaction="Procuracao Selecionada"]',
-              '[angularticsaction="Empresa Selecionada"]',
-              'span'
-            ];
-            const elements = Array.from(document.querySelectorAll(selectors.join(',')));
-            const target = elements.find(el => {
-              const text = el.textContent || '';
-              return text.includes('03.853.896/0003-01');
-            });
-            if (target) {
-              target.click();
-            }
-          });
-          
-          await new Promise(resolve => setTimeout(resolve, 5000));
-          
-          const cookies = await page.cookies();
-          saveCookies(cookies, COOKIES_PATH_TCP);
-          console.log('TCP: Cookies atualizados após seleção de empresa.');
-        } catch (selErr) {
-          console.error('TCP: Erro ao selecionar empresa no cabeçalho:', selErr.message);
-        }
-      }
+      console.log('TCP: Pulando seleção de empresa (a sessão já está ativa nos cookies).');
 
     }
 
     const searchInputSelector = 'input#search';
-    const searchExists = await page.evaluate((sel) => document.querySelector(sel) !== null, searchInputSelector);
+    const searchExists = await evaluateWithTimeout(page, (sel) => document.querySelector(sel) !== null, 15000, searchInputSelector);
     if (!searchExists) {
       throw new Error('Campo de busca input#search não localizado na página.');
     }
     
     console.log('TCP: Preenchendo campo de busca com ' + containerCode + '...');
-    await page.evaluate((sel, code) => {
+    await evaluateWithTimeout(page, (sel, code) => {
       const input = document.querySelector(sel);
       if (input) {
         input.value = code;
@@ -380,8 +333,10 @@ async function queryTCP(containerCode) {
         input.dispatchEvent(new Event('change', { bubbles: true }));
       }
       const btn = document.querySelector('button.submit-button');
-      if (btn) btn.click();
-    }, searchInputSelector, containerCode);
+      if (btn) {
+        setTimeout(() => btn.click(), 0);
+      }
+    }, 15000, searchInputSelector, containerCode);
     console.log('TCP: Botão de busca clicado, aguardando 6 segundos por resultados...');
 
     // Esperar resultados carregarem sem fazer polling excessivo
@@ -389,36 +344,39 @@ async function queryTCP(containerCode) {
 
     let hasResults = false;
     try {
-      const state = await page.evaluate(() => {
+      const state = await evaluateWithTimeout(page, () => {
         const mainContent = document.querySelector('app-conteiner-consulta-geral') || document.querySelector('main') || document.body;
         const text = mainContent ? (mainContent.textContent || '') : '';
         const sideTable = document.querySelector('app-conteiner-side-table');
         const hasContainer = sideTable && sideTable.querySelector('a') !== null;
         return { finished: hasContainer || text.includes('Não encontrado') || text.includes('Não foi possível encontrar'), success: hasContainer };
-      });
+      }, 15000);
       hasResults = state.success;
     } catch (e) {
-      console.log('TCP: Erro ao verificar resultados do contêiner ' + containerCode);
+      console.log('TCP: Erro ao verificar resultados do contêiner ' + containerCode + ': ' + e.message);
     }
 
     console.log('TCP: Resultados localizados? ' + hasResults);
     if (!hasResults) {
-      // Agenda o temporizador de fechamento por inatividade e retorna null
-      resetTcpIdleTimer();
+      if (browser) {
+        try { await browser.close(); } catch(e) {}
+      }
       return null;
     }
 
     // Clicar no link do contêiner na tabela lateral para exibir os detalhes
     console.log('TCP: Clicando no contêiner na tabela lateral...');
-    await page.evaluate(() => {
+    await evaluateWithTimeout(page, () => {
       const el = document.querySelector('app-conteiner-side-table a');
-      if (el) el.click();
-    });
+      if (el) {
+        setTimeout(() => el.click(), 0);
+      }
+    }, 15000);
     await new Promise(resolve => setTimeout(resolve, 3000));
 
     // Garantir que as abas de detalhes carregaram
     try {
-      const tabsExists = await page.evaluate(() => document.querySelector('.mat-tab-label, [role="tab"]') !== null);
+      const tabsExists = await evaluateWithTimeout(page, () => document.querySelector('.mat-tab-label, [role="tab"]') !== null, 15000);
       if (!tabsExists) {
         console.log('TCP: Abas não localizadas na página de detalhes.');
       }
@@ -663,20 +621,7 @@ async function queryPOA(containerCode, bookingCode) {
   let browser;
   try {
     const savedCookies = loadCookies(COOKIES_PATH_POA);
-    const launchOptions = {
-      headless: true,
-      defaultViewport: { width: 1280, height: 800 },
-      protocolTimeout: 60000,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-web-security',
-        '--disable-dev-shm-usage'
-      ]
-    };
-    if (chromePath) {
-      launchOptions.executablePath = chromePath;
-    }
+    const launchOptions = getLaunchOptions(['--disable-web-security']);
     browser = await puppeteer.launch(launchOptions);
 
     const page = await browser.newPage();
@@ -827,20 +772,7 @@ async function queryNAV(containerCode) {
   let browser;
   try {
     const savedCookies = loadCookies(COOKIES_PATH_NAV);
-    const launchOptions = {
-      headless: true,
-      defaultViewport: { width: 1280, height: 800 },
-      protocolTimeout: 60000,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-web-security',
-        '--disable-dev-shm-usage'
-      ]
-    };
-    if (chromePath) {
-      launchOptions.executablePath = chromePath;
-    }
+    const launchOptions = getLaunchOptions(['--disable-web-security']);
     browser = await puppeteer.launch(launchOptions);
 
     const page = await browser.newPage();
@@ -997,20 +929,7 @@ async function queryTEC(containerCode) {
   try {
     const savedCookies = loadCookies(COOKIES_PATH_TEC);
     
-    const launchOptions = {
-      headless: true,
-      defaultViewport: { width: 1280, height: 800 },
-      protocolTimeout: 60000,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-web-security',
-        '--disable-dev-shm-usage'
-      ]
-    };
-    if (chromePath) {
-      launchOptions.executablePath = chromePath;
-    }
+    const launchOptions = getLaunchOptions(['--disable-web-security']);
     browser = await puppeteer.launch(launchOptions);
 
     page = await browser.newPage();
