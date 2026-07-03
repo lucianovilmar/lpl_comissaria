@@ -15,6 +15,7 @@ CREATE TABLE usuarios (
     login VARCHAR(100) UNIQUE NOT NULL,
     senha VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE,
+    ativo BOOLEAN DEFAULT TRUE,
     is_admin BOOLEAN DEFAULT FALSE,
     can_view_processes BOOLEAN DEFAULT TRUE,
     can_query_ports BOOLEAN DEFAULT TRUE,

@@ -107,6 +107,86 @@ function forwardToLocalAgent(req, res, targetUrlStr) {
   });
 }
 
+// Token HMAC Security helpers
+const crypto = require('crypto');
+const nodemailer = require('nodemailer');
+const JWT_SECRET = process.env.JWT_SECRET || 'lpl_comissaria_secret_key_123!';
+
+function generateToken(payload) {
+  const data = Buffer.from(JSON.stringify(payload)).toString('base64');
+  const signature = crypto.createHmac('sha256', JWT_SECRET).update(data).digest('base64');
+  return `${data}.${signature}`;
+}
+
+function verifyToken(token) {
+  if (!token) return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [data, signature] = parts;
+  const expectedSignature = crypto.createHmac('sha256', JWT_SECRET).update(data).digest('base64');
+  if (signature !== expectedSignature) return null;
+  try {
+    return JSON.parse(Buffer.from(data, 'base64').toString('utf8'));
+  } catch (e) {
+    return null;
+  }
+}
+
+function getAuthenticatedUser(req) {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+  const token = authHeader.substring(7);
+  return verifyToken(token);
+}
+
+function checkAdmin(req, res) {
+  const user = getAuthenticatedUser(req);
+  if (!user || !user.is_admin) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Acesso negado. Apenas administradores podem acessar esta área.' }));
+    return null;
+  }
+  return user;
+}
+
+async function enviarEmail(destinatario, assunto, textoHtml, textoSimples) {
+  const host = process.env.SMTP_HOST;
+  const port = parseInt(process.env.SMTP_PORT, 10);
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+
+  if (!host || !user || !pass) {
+    console.log('--- SIMULADOR DE E-MAIL ---');
+    console.log(`Para: ${destinatario}`);
+    console.log(`Assunto: ${assunto}`);
+    console.log(`Mensagem:\n${textoSimples}`);
+    console.log('---------------------------\n');
+    return true;
+  }
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: { user, pass }
+    });
+
+    await transporter.sendMail({
+      from: `"LPL Comissária" <${user}>`,
+      to: destinatario,
+      subject: assunto,
+      text: textoSimples,
+      html: textoHtml
+    });
+    console.log(`E-mail enviado com sucesso para ${destinatario}`);
+    return true;
+  } catch (err) {
+    console.error('Erro ao enviar e-mail:', err.message);
+    return false;
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   // CORS Support
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -143,9 +223,26 @@ const server = http.createServer(async (req, res) => {
       }
       
       if (foundUser && passwordMatch) {
+        if (foundUser.ativo === false) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: 'Esta conta está desativada. Entre em contato com o administrador.' }));
+          return;
+        }
+        
+        const token = generateToken({
+          id: foundUser.id,
+          login: foundUser.login,
+          email: foundUser.email,
+          is_admin: foundUser.is_admin,
+          can_view_processes: foundUser.can_view_processes,
+          can_query_ports: foundUser.can_query_ports,
+          can_upload_cookies: foundUser.can_upload_cookies
+        });
+
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ 
           success: true, 
+          token,
           user: foundUser.login,
           is_admin: foundUser.is_admin,
           can_view_processes: foundUser.can_view_processes,
@@ -414,6 +511,256 @@ const server = http.createServer(async (req, res) => {
       console.error('Error in processos api:', err);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'erro api', message: err.message }));
+    }
+    return;
+  }
+
+  // Endpoint 5: POST /api/forgot-password
+  if (reqPath === '/api/forgot-password' && req.method === 'POST') {
+    const { login } = await readJsonBody(req);
+    if (!login) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Informe seu login ou e-mail.' }));
+      return;
+    }
+    
+    try {
+      const dbRes = await db.query(
+        'SELECT id, login, email FROM usuarios WHERE LOWER(login) = LOWER($1) OR LOWER(email) = LOWER($1)',
+        [login.trim()]
+      );
+      
+      if (dbRes.rows.length === 0) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Usuário ou e-mail não localizado.' }));
+        return;
+      }
+      
+      const user = dbRes.rows[0];
+      if (!user.email) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Usuário não possui e-mail cadastrado para recuperação.' }));
+        return;
+      }
+      
+      // Gerar senha temporária de 6 caracteres alfanuméricos
+      const tempPass = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const hash = bcrypt.hashSync(tempPass, 10);
+      
+      await db.query('UPDATE usuarios SET senha = $1 WHERE id = $2', [hash, user.id]);
+      
+      const subject = 'Recuperação de Senha - LPL Comissária';
+      const htmlBody = `
+        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+          <h2 style="color: #0f172a;">Recuperação de Senha</h2>
+          <p>Olá, <strong>${user.login}</strong>.</p>
+          <p>Uma solicitação de redefinição de senha foi realizada para sua conta.</p>
+          <p>Use a seguinte senha temporária para acessar o sistema:</p>
+          <div style="background: #f1f5f9; padding: 12px; font-size: 20px; font-weight: bold; text-align: center; border-radius: 6px; letter-spacing: 2px; margin: 20px 0;">
+            ${tempPass}
+          </div>
+          <p style="color: #ef4444; font-size: 13px;"><strong>Importante:</strong> Recomendamos alterar esta senha assim que fizer o login em sua conta.</p>
+          <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+          <p style="font-size: 12px; color: #64748b;">LPL Comissária de Despachos Ltda. - Itajaí/SC</p>
+        </div>
+      `;
+      const textBody = `Olá, ${user.login}.\n\nUma solicitação de redefinição de senha foi realizada para sua conta.\n\nSua nova senha temporária de acesso é: ${tempPass}\n\nRecomendamos alterar sua senha após efetuar o login.`;
+      
+      const emailSent = await enviarEmail(user.email, subject, htmlBody, textBody);
+      
+      if (emailSent) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, message: 'Senha temporária enviada com sucesso para o e-mail cadastrado.' }));
+      } else {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Erro ao disparar o e-mail de recuperação. Tente novamente mais tarde.' }));
+      }
+    } catch (err) {
+      console.error('Error in forgot-password:', err);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Erro interno ao processar recuperação de senha.' }));
+    }
+    return;
+  }
+
+  // Endpoint 6: GET /api/admin/users
+  if (reqPath === '/api/admin/users' && req.method === 'GET') {
+    if (!checkAdmin(req, res)) return;
+    try {
+      const dbRes = await db.query(
+        'SELECT id, login, email, ativo, is_admin, can_view_processes, can_query_ports, can_upload_cookies FROM usuarios ORDER BY login ASC'
+      );
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(dbRes.rows));
+    } catch (err) {
+      console.error('Error fetching admin users:', err);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Erro ao obter usuários.' }));
+    }
+    return;
+  }
+
+  // Endpoint 7: POST /api/admin/users
+  if (reqPath === '/api/admin/users' && req.method === 'POST') {
+    const adminUser = checkAdmin(req, res);
+    if (!adminUser) return;
+    
+    try {
+      const { login, email, senha, is_admin, can_view_processes, can_query_ports, can_upload_cookies, ativo } = await readJsonBody(req);
+      
+      // Validações (estilo Green)
+      if (!login || !email || !senha) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Nome de usuário, e-mail e senha são obrigatórios.' }));
+        return;
+      }
+      if (senha.length < 6 || senha.length > 15) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'A senha deve conter entre 6 e 15 caracteres.' }));
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'O formato do e-mail é inválido.' }));
+        return;
+      }
+      
+      // Verificar se já existe o login ou e-mail
+      const existQuery = await db.query(
+        'SELECT id FROM usuarios WHERE LOWER(login) = LOWER($1) OR LOWER(email) = LOWER($2)',
+        [login.trim(), email.trim()]
+      );
+      if (existQuery.rows.length > 0) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Nome de usuário ou e-mail já cadastrado.' }));
+        return;
+      }
+      
+      const hash = bcrypt.hashSync(senha, 10);
+      await db.query(
+        `INSERT INTO usuarios (login, email, senha, is_admin, can_view_processes, can_query_ports, can_upload_cookies, ativo) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          login.trim(), 
+          email.trim(), 
+          hash, 
+          !!is_admin, 
+          !!can_view_processes, 
+          !!can_query_ports, 
+          !!can_upload_cookies,
+          ativo !== false
+        ]
+      );
+      
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, message: 'Usuário cadastrado com sucesso!' }));
+    } catch (err) {
+      console.error('Error creating user:', err);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Erro ao cadastrar usuário no banco.' }));
+    }
+    return;
+  }
+
+  // Endpoint 8: PUT /api/admin/users/:id
+  if (reqPath.startsWith('/api/admin/users/') && req.method === 'PUT') {
+    const adminUser = checkAdmin(req, res);
+    if (!adminUser) return;
+    
+    const idStr = reqPath.substring('/api/admin/users/'.length);
+    const userId = parseInt(idStr, 10);
+    if (isNaN(userId)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'ID de usuário inválido.' }));
+      return;
+    }
+    
+    try {
+      const { login, email, senha, is_admin, can_view_processes, can_query_ports, can_upload_cookies, ativo } = await readJsonBody(req);
+      
+      // Validações básicas
+      if (!login || !email) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Nome de usuário e e-mail são obrigatórios.' }));
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'O formato do e-mail é inválido.' }));
+        return;
+      }
+      if (senha && (senha.length < 6 || senha.length > 15)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'A senha deve conter entre 6 e 15 caracteres.' }));
+        return;
+      }
+      
+      // Verificar se já existe o login ou e-mail em outro usuário
+      const existQuery = await db.query(
+        'SELECT id FROM usuarios WHERE (LOWER(login) = LOWER($1) OR LOWER(email) = LOWER($2)) AND id != $3',
+        [login.trim(), email.trim(), userId]
+      );
+      if (existQuery.rows.length > 0) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Nome de usuário ou e-mail já em uso por outro usuário.' }));
+        return;
+      }
+      
+      if (senha) {
+        const hash = bcrypt.hashSync(senha, 10);
+        await db.query(
+          `UPDATE usuarios 
+           SET login = $1, email = $2, senha = $3, is_admin = $4, can_view_processes = $5, can_query_ports = $6, can_upload_cookies = $7, ativo = $8
+           WHERE id = $9`,
+          [login.trim(), email.trim(), hash, !!is_admin, !!can_view_processes, !!can_query_ports, !!can_upload_cookies, ativo !== false, userId]
+        );
+      } else {
+        await db.query(
+          `UPDATE usuarios 
+           SET login = $1, email = $2, is_admin = $3, can_view_processes = $4, can_query_ports = $5, can_upload_cookies = $6, ativo = $7
+           WHERE id = $8`,
+          [login.trim(), email.trim(), !!is_admin, !!can_view_processes, !!can_query_ports, !!can_upload_cookies, ativo !== false, userId]
+        );
+      }
+      
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, message: 'Usuário atualizado com sucesso!' }));
+    } catch (err) {
+      console.error('Error updating user:', err);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Erro ao atualizar usuário no banco.' }));
+    }
+    return;
+  }
+
+  // Endpoint 9: DELETE /api/admin/users/:id
+  if (reqPath.startsWith('/api/admin/users/') && req.method === 'DELETE') {
+    const adminUser = checkAdmin(req, res);
+    if (!adminUser) return;
+    
+    const idStr = reqPath.substring('/api/admin/users/'.length);
+    const userId = parseInt(idStr, 10);
+    if (isNaN(userId)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'ID de usuário inválido.' }));
+      return;
+    }
+    
+    // Prevenir que um administrador delete a si mesmo
+    if (adminUser.id === userId) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Você não pode excluir sua própria conta de administrador ativa.' }));
+      return;
+    }
+    
+    try {
+      await db.query('DELETE FROM usuarios WHERE id = $1', [userId]);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, message: 'Usuário excluído com sucesso!' }));
+    } catch (err) {
+      console.error('Error deleting user:', err);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Erro ao excluir usuário no banco.' }));
     }
     return;
   }

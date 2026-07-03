@@ -1,80 +1,249 @@
-// Navegação
-// Injetar botão "Gerar Planilha" se não existir
-const firstNavBtn = document.querySelector('.nav-btn');
-if(firstNavBtn && firstNavBtn.parentNode && !document.querySelector('[data-page="planilha"]')){
-  const btn = document.createElement('button');
-  btn.className = 'nav-btn';
-  btn.dataset.page = 'planilha';
-  btn.textContent = 'Gerar Planilha';
-  firstNavBtn.parentNode.appendChild(btn);
-}
-
-// Injetar botão "LPL Planilha" se não existir
-if(firstNavBtn && firstNavBtn.parentNode && !document.querySelector('[data-page="lpl-planilha"]')){
-  const btn = document.createElement('button');
-  btn.className = 'nav-btn';
-  btn.dataset.page = 'lpl-planilha';
-  btn.textContent = 'LPL Planilha';
-  firstNavBtn.parentNode.appendChild(btn);
-}
-
-// Injetar botão "Gestão de Processos" se não existir
-if(firstNavBtn && firstNavBtn.parentNode && !document.querySelector('[data-page="gestao-processos"]')){
-  const btn = document.createElement('button');
-  btn.className = 'nav-btn';
-  btn.dataset.page = 'gestao-processos';
-  btn.textContent = 'Gestão de Processos';
-  firstNavBtn.parentNode.appendChild(btn);
-}
-
-const navButtons = document.querySelectorAll('.nav-btn');
-const contentArea = document.getElementById('content-area');
+// --- SISTEMA DE AUTENTICAÇÃO E PERMISSÕES ---
 const greenAccessPassword = 'Luiggi9654';
 const greenTestSampleData = [
   { id: 1, pedido:'0001', cliente:'Cliente A', cnpj:'12.345.678/0001-90', valor: 2450.50, status:'pendente' },
   { id: 2, pedido:'0002', cliente:'Cliente B', cnpj:'98.765.432/0001-10', valor: 1780.75, status:'em processamento' }
 ];
 
-// Alterar nome do botão Teste para Calculo de Itens
-navButtons.forEach(btn => {
-  if(btn.dataset.page === 'teste') btn.textContent = 'Calculo de Itens';
-});
+let contentArea = document.getElementById('content-area');
 
-// Modo tema (padrão: dark)
-const themeToggle = document.getElementById('themeToggle');
-function applyTheme(theme){
-  document.body.classList.toggle('theme-dark', theme === 'dark');
-  document.body.classList.toggle('theme-light', theme === 'light');
-  if(themeToggle) themeToggle.textContent = theme === 'dark' ? '🌙' : '☀️';
-}
-// carregar preferência
-const savedTheme = localStorage.getItem('site-theme') || 'dark';
-applyTheme(savedTheme);
-if(themeToggle){
-  themeToggle.addEventListener('click', ()=>{
-    const next = document.body.classList.contains('theme-dark') ? 'light' : 'dark';
-    applyTheme(next);
-    localStorage.setItem('site-theme', next);
-  });
-}
-
-function requestGreenAccess(){
-  const answer = prompt('Digite a senha para acessar o Green Teste:');
-  if(answer === null) return false;
-  if(answer.trim() === greenAccessPassword) return true;
-  alert('Senha incorreta. Acesso negado.');
-  return false;
-}
-
-navButtons.forEach(btn => btn.addEventListener('click', () => {
-  if(btn.dataset.page === 'green' && !requestGreenAccess()){
-    return;
+function checkAuth() {
+  const token = sessionStorage.getItem('lpl_token');
+  const loginWall = document.getElementById('login-wall');
+  const mainApp = document.getElementById('main-app');
+  
+  if (!token) {
+    if (loginWall) loginWall.style.display = 'flex';
+    if (mainApp) mainApp.style.display = 'none';
+    renderLoginWall();
+  } else {
+    if (loginWall) loginWall.style.display = 'none';
+    if (mainApp) mainApp.style.display = 'block';
+    
+    // Recapturar o content-area no DOM caso tenha mudado
+    contentArea = document.getElementById('content-area');
+    setupSidebar();
   }
+}
 
-  navButtons.forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  loadPage(btn.dataset.page);
-}));
+function logout() {
+  sessionStorage.clear();
+  checkAuth();
+}
+
+function setupSidebar() {
+  const sidebar = document.querySelector('.sidebar');
+  if (!sidebar) return;
+  
+  // Limpar a barra lateral e recriar dinamicamente conforme as permissões
+  sidebar.innerHTML = '';
+  
+  // 1. Due (Livre para todos)
+  sidebar.innerHTML += `<button class="nav-btn" data-page="due">Due</button>`;
+  
+  // 2. Calculo de Itens (Livre para todos)
+  sidebar.innerHTML += `<button class="nav-btn" data-page="teste">Calculo de Itens</button>`;
+  
+  // 3. Green Teste (Livre, mas com senha secundária)
+  sidebar.innerHTML += `<button class="nav-btn green-test" data-page="green">Green Teste</button>`;
+  
+  // 4. LPL Planilha & Gestão (Somente se can_view_processes for true)
+  if (sessionStorage.getItem('lpl_can_view_processes') === 'true') {
+    sidebar.innerHTML += `<button class="nav-btn" data-page="planilha">Gerar Planilha</button>`;
+    sidebar.innerHTML += `<button class="nav-btn" data-page="gestao-processos">Gestão de Processos</button>`;
+  }
+  
+  // 5. Consulta Portos (Somente se can_query_ports for true)
+  if (sessionStorage.getItem('lpl_can_query_ports') === 'true') {
+    sidebar.innerHTML += `<button class="nav-btn" data-page="lpl-planilha">LPL Planilha</button>`;
+  }
+  
+  // 6. Painel Admin (Somente para Administradores)
+  if (sessionStorage.getItem('lpl_is_admin') === 'true') {
+    sidebar.innerHTML += `<button class="nav-btn" data-page="admin" style="border-left: 3px solid var(--btn-active-bg); font-weight: 600; color: var(--btn-active-bg);">Painel Admin</button>`;
+  }
+  
+  // 7. Botão Sair (Logout)
+  sidebar.innerHTML += `
+    <button class="nav-btn" id="logoutBtn" style="margin-top: 30px; border-top: 1px solid var(--border); padding-top: 12px; color: #ef4444; font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
+      <span>Sair</span> <span>🚪</span>
+    </button>
+  `;
+  
+  const navButtons = sidebar.querySelectorAll('.nav-btn');
+  navButtons.forEach(btn => {
+    if (btn.id === 'logoutBtn') {
+      btn.addEventListener('click', logout);
+      return;
+    }
+    btn.addEventListener('click', () => {
+      if(btn.dataset.page === 'green' && !requestGreenAccess()){
+        return;
+      }
+      navButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      loadPage(btn.dataset.page);
+    });
+  });
+  
+  // Selecionar Due como padrão inicialmente
+  const dueBtn = sidebar.querySelector('[data-page="due"]');
+  if (dueBtn) {
+    dueBtn.classList.add('active');
+    loadPage('due');
+  }
+}
+
+function renderLoginWall(alertHtml = '') {
+  const loginWall = document.getElementById('login-wall');
+  if (!loginWall) return;
+  
+  loginWall.innerHTML = `
+    <div class="login-card">
+      <img src="assets/LPL%20-%20logo.png" alt="LPL Logo" class="login-logo" onerror="this.onerror=null;this.src='assets/placeholder.svg';">
+      <h2 class="login-title">LPL Comissária</h2>
+      <p class="login-subtitle">Gestão de Processos e Rastreamento</p>
+      
+      ${alertHtml}
+      
+      <form id="loginForm" class="login-form">
+        <div class="field">
+          <label for="usernameInput">Usuário ou E-mail</label>
+          <input type="text" id="usernameInput" required placeholder="Digite seu usuário ou e-mail">
+        </div>
+        
+        <div class="field">
+          <label for="passwordInput">Senha</label>
+          <div class="password-wrapper">
+            <input type="password" id="passwordInput" required placeholder="Digite sua senha">
+            <button type="button" class="toggle-password-btn" onclick="togglePasswordVisibility('passwordInput', this)" tabIndex="-1">👁️</button>
+          </div>
+        </div>
+        
+        <div class="login-links" style="display: flex; justify-content: flex-end; margin-top: -6px; margin-bottom: 6px;">
+          <button type="button" class="login-link" onclick="renderForgotPasswordForm()">Esqueceu sua senha?</button>
+        </div>
+        
+        <button type="submit" class="login-btn">Entrar</button>
+      </form>
+      
+      <div class="login-footer">
+        LPL Comissária de Despachos Ltda.<br>
+        Matriz: Itajaí/SC — Filial: Rio Grande/RS
+      </div>
+    </div>
+  `;
+  
+  const form = document.getElementById('loginForm');
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const login = document.getElementById('usernameInput').value.trim();
+      const senha = document.getElementById('passwordInput').value;
+      const btn = form.querySelector('.login-btn');
+      
+      btn.disabled = true;
+      btn.textContent = 'Autenticando...';
+      
+      try {
+        const response = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ login, senha })
+        });
+        
+        const result = await response.json();
+        if (response.ok && result.success) {
+          sessionStorage.setItem('lpl_token', result.token);
+          sessionStorage.setItem('lpl_user', result.user);
+          sessionStorage.setItem('lpl_is_admin', String(result.is_admin));
+          sessionStorage.setItem('lpl_can_view_processes', String(result.can_view_processes));
+          sessionStorage.setItem('lpl_can_query_ports', String(result.can_query_ports));
+          sessionStorage.setItem('lpl_can_upload_cookies', String(result.can_upload_cookies));
+          
+          checkAuth();
+        } else {
+          renderLoginWall(`<div class="login-alert login-alert-danger">${result.message || 'Usuário ou senha incorretos.'}</div>`);
+        }
+      } catch (err) {
+        console.error(err);
+        renderLoginWall('<div class="login-alert login-alert-danger">Erro de rede. Verifique a conexão com o servidor.</div>');
+      }
+    });
+  }
+}
+
+function togglePasswordVisibility(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  if (input.type === 'password') {
+    input.type = 'text';
+    btn.textContent = '👁️‍🗨️';
+  } else {
+    input.type = 'password';
+    btn.textContent = '👁️';
+  }
+}
+
+function renderForgotPasswordForm(alertHtml = '') {
+  const loginWall = document.getElementById('login-wall');
+  if (!loginWall) return;
+  
+  loginWall.innerHTML = `
+    <div class="login-card">
+      <img src="assets/LPL%20-%20logo.png" alt="LPL Logo" class="login-logo" onerror="this.onerror=null;this.src='assets/placeholder.svg';">
+      <h2 class="login-title">Recuperação de Senha</h2>
+      <p class="login-subtitle">Informe seus dados para recuperar o acesso</p>
+      
+      ${alertHtml}
+      
+      <form id="forgotForm" class="login-form">
+        <div class="field">
+          <label for="forgotLoginInput">Usuário ou E-mail</label>
+          <input type="text" id="forgotLoginInput" required placeholder="Digite seu usuário ou e-mail cadastrado">
+        </div>
+        
+        <button type="submit" class="login-btn">Enviar Senha por E-mail</button>
+        <button type="button" class="login-btn-secondary" onclick="renderLoginWall()">Voltar para o Login</button>
+      </form>
+      
+      <div class="login-footer">
+        LPL Comissária de Despachos Ltda.<br>
+        Matriz: Itajaí/SC — Filial: Rio Grande/RS
+      </div>
+    </div>
+  `;
+  
+  const form = document.getElementById('forgotForm');
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const login = document.getElementById('forgotLoginInput').value.trim();
+      const btn = form.querySelector('.login-btn');
+      
+      btn.disabled = true;
+      btn.textContent = 'Enviando...';
+      
+      try {
+        const response = await fetch('/api/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ login })
+        });
+        
+        const result = await response.json();
+        if (response.ok && result.success) {
+          renderForgotPasswordForm(`<div class="login-alert login-alert-success">${result.message}</div>`);
+        } else {
+          renderForgotPasswordForm(`<div class="login-alert login-alert-danger">${result.error || 'Erro ao processar solicitação.'}</div>`);
+        }
+      } catch (err) {
+        console.error(err);
+        renderForgotPasswordForm('<div class="login-alert login-alert-danger">Erro de rede. Verifique a conexão com o servidor.</div>');
+      }
+    });
+  }
+}
 
 function loadPage(page){
   if(page === 'due') renderDue();
@@ -82,6 +251,7 @@ function loadPage(page){
   else if(page === 'green') renderGreenTest();
   else if(page === 'lpl-planilha') renderLplPlanilha();
   else if(page === 'gestao-processos') renderGestaoProcessos();
+  else if(page === 'admin') renderAdmin();
   else renderTeste();
 }
 
@@ -2488,42 +2658,285 @@ function renderProcessosTable(data, abaName, term = '', matchingCount = 0){
   tableArea.innerHTML = html;
 }
 
-function filterTableData(query){
-  const activeBtn = document.querySelector('.process-tab-btn.active');
-  if (!activeBtn) return;
-  const abaName = activeBtn.dataset.aba;
-  
-  const term = query.toLowerCase().trim();
-  
-  if (!term) {
-    renderProcessosTable(currentProcessosData, abaName, '', 0);
-    return;
-  }
-
-  const fieldsToFilter = [
-    'CONTAINER', 'Container', 'BOOKING', 'Booking', 
-    'EXPORTADOR', 'Exportador', 'NAVIO', 'Navio', 
-    'EXP', 'Referência', 'RUC', 'DUE', 'Nº DUE', 'DUE/RUC',
-    'IMPORTADOR', 'Importador', 'Produto'
-  ];
-
-  const matchingRows = [];
-  const nonMatchingRows = [];
-
-  currentProcessosData.forEach(row => {
-    const isMatch = fieldsToFilter.some(field => {
-      const val = row[field];
-      if (val === undefined || val === null) return false;
-      return String(val).toLowerCase().includes(term);
-    });
-    
-    if (isMatch) {
-      matchingRows.push(row);
-    } else {
-      nonMatchingRows.push(row);
-    }
-  });
-
   const orderedData = [...matchingRows, ...nonMatchingRows];
   renderProcessosTable(orderedData, abaName, term, matchingRows.length);
 }
+
+// --- ÁREA ADMINISTRATIVA: GESTÃO DE USUÁRIOS ---
+
+async function renderAdmin() {
+  const contentArea = document.getElementById('content-area');
+  contentArea.innerHTML = `
+    <div class="card" style="margin-bottom: 24px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div>
+          <h2 style="margin: 0; color: var(--text);">Gestão de Usuários (Área Admin)</h2>
+          <p style="margin: 4px 0 0 0; font-size: 13px; color: var(--muted);">Cadastre, edite e configure permissões de acesso do sistema</p>
+        </div>
+        <button class="nav-btn active" style="width: auto; padding: 10px 20px; font-weight: 600;" onclick="openUserModal()">➕ Novo Usuário</button>
+      </div>
+      
+      <div class="process-table-container">
+        <table class="process-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Login</th>
+              <th>E-mail</th>
+              <th>Status</th>
+              <th>Permissões</th>
+              <th style="text-align: center;">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="adminUsersTableBody">
+            <tr>
+              <td colspan="6" style="text-align: center; padding: 20px; color: var(--muted);">Carregando usuários...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  
+  await loadAdminUsers();
+}
+
+async function loadAdminUsers() {
+  const tbody = document.getElementById('adminUsersTableBody');
+  if (!tbody) return;
+  
+  try {
+    const token = sessionStorage.getItem('lpl_token');
+    const response = await fetch('/api/admin/users', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (!response.ok) {
+      if (response.status === 403 || response.status === 401) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #ef4444; padding: 20px;">Acesso negado. Faça login novamente.</td></tr>`;
+        return;
+      }
+      throw new Error('Erro ao carregar usuários');
+    }
+    
+    const users = await response.json();
+    if (users.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--muted);">Nenhum usuário cadastrado.</td></tr>`;
+      return;
+    }
+    
+    tbody.innerHTML = users.map(u => {
+      const perms = [];
+      if (u.is_admin) perms.push('<span class="admin-badge admin-badge-admin">Admin</span>');
+      if (u.can_view_processes) perms.push('<span class="admin-badge admin-badge-yes">Planilhas</span>');
+      if (u.can_query_ports) perms.push('<span class="admin-badge admin-badge-yes">Portos</span>');
+      if (u.can_upload_cookies) perms.push('<span class="admin-badge admin-badge-yes">Cookies</span>');
+      
+      const statusBadge = u.ativo !== false 
+        ? '<span class="admin-badge admin-badge-yes">Ativo</span>' 
+        : '<span class="admin-badge admin-badge-no">Inativo</span>';
+        
+      return `
+        <tr>
+          <td>${u.id}</td>
+          <td style="font-weight: 600;">${u.login}</td>
+          <td>${u.email || '-'}</td>
+          <td>${statusBadge}</td>
+          <td>
+            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+              ${perms.join('') || '<span class="admin-badge admin-badge-no">Nenhuma</span>'}
+            </div>
+          </td>
+          <td style="text-align: center;">
+            <div style="display: flex; gap: 8px; justify-content: center;">
+              <button class="admin-action-btn" onclick="openUserModal(${JSON.stringify(u).replace(/"/g, '&quot;')})">✏️ Editar</button>
+              <button class="admin-action-btn admin-action-btn-danger" onclick="deleteUser(${u.id}, '${u.login}')">🗑️ Excluir</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error(err);
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #ef4444; padding: 20px;">Erro ao carregar os dados.</td></tr>`;
+  }
+}
+
+function openUserModal(user = null) {
+  // Remover modal existente se houver
+  closeUserModal();
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.id = 'userModalBackdrop';
+  
+  const isEdit = !!user;
+  const modalTitle = isEdit ? 'Editar Usuário' : 'Novo Usuário';
+  
+  backdrop.innerHTML = `
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>${modalTitle}</h3>
+        <button class="modal-close-btn" onclick="closeUserModal()">&times;</button>
+      </div>
+      <form id="modalUserForm">
+        <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
+          <div class="field" style="width: 100%;">
+            <label>Nome de Usuário (Login)</label>
+            <input type="text" id="modalLogin" required value="${isEdit ? user.login : ''}" placeholder="Ex: luciano.vs" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); color: var(--text); outline: none;">
+          </div>
+          
+          <div class="field" style="width: 100%;">
+            <label>E-mail comercial</label>
+            <input type="email" id="modalEmail" required value="${isEdit ? user.email || '' : ''}" placeholder="Ex: usuario@lplcomissaria.com.br" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); color: var(--text); outline: none;">
+          </div>
+          
+          <div class="field" style="width: 100%;">
+            <label>Senha ${isEdit ? '(Deixe em branco para não alterar)' : ''}</label>
+            <div class="password-wrapper">
+              <input type="password" id="modalPassword" ${isEdit ? '' : 'required'} placeholder="${isEdit ? 'Senha inalterada' : 'Senha de 6 a 15 caracteres'}" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); color: var(--text); outline: none;">
+              <button type="button" class="toggle-password-btn" onclick="togglePasswordVisibility('modalPassword', this)" tabIndex="-1">👁️</button>
+            </div>
+          </div>
+          
+          <div class="admin-checkbox-group">
+            <label class="admin-checkbox-label">
+              <input type="checkbox" id="modalIsAdmin" ${isEdit && user.is_admin ? 'checked' : ''}>
+              <strong>Administrador Geral</strong>
+            </label>
+            
+            <label class="admin-checkbox-label">
+              <input type="checkbox" id="modalCanViewProcesses" ${!isEdit || user.can_view_processes ? 'checked' : ''}>
+              Ver Processos / Gestão (LPL Planilha e Excel)
+            </label>
+            
+            <label class="admin-checkbox-label">
+              <input type="checkbox" id="modalCanQueryPorts" ${!isEdit || user.can_query_ports ? 'checked' : ''}>
+              Consultar Terminais dos Portos (Scraper)
+            </label>
+            
+            <label class="admin-checkbox-label">
+              <input type="checkbox" id="modalCanUploadCookies" ${isEdit && user.can_upload_cookies ? 'checked' : ''}>
+              Sincronizar Cookies (TCP/Tecon/Portonave)
+            </label>
+
+            <label class="admin-checkbox-label" style="margin-top: 6px; border-top: 1px solid var(--border); padding-top: 10px;">
+              <input type="checkbox" id="modalAtivo" ${!isEdit || user.ativo !== false ? 'checked' : ''}>
+              <strong>Conta Ativa</strong> (Permitir login)
+            </label>
+          </div>
+          
+          <div id="modalErrorAlert" style="display: none; background: rgba(239, 68, 68, 0.1); color: #f87171; padding: 10px; border-radius: 6px; border: 1px solid rgba(239, 68, 68, 0.2); font-size: 13px; text-align: center;"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="admin-action-btn" onclick="closeUserModal()">Cancelar</button>
+          <button type="submit" class="admin-action-btn active" style="background: var(--btn-active-bg); color: var(--btn-active-color); border-color: var(--btn-active-bg);">Salvar</button>
+        </div>
+      </form>
+    </div>
+  `;
+  
+  document.body.appendChild(backdrop);
+  
+  const form = document.getElementById('modalUserForm');
+  if (form) {
+    form.addEventListener('submit', (e) => saveUser(e, isEdit ? user.id : null));
+  }
+}
+
+function closeUserModal() {
+  const modal = document.getElementById('userModalBackdrop');
+  if (modal) modal.remove();
+}
+
+async function saveUser(e, userId) {
+  e.preventDefault();
+  
+  const login = document.getElementById('modalLogin').value.trim();
+  const email = document.getElementById('modalEmail').value.trim();
+  const senha = document.getElementById('modalPassword').value;
+  const is_admin = document.getElementById('modalIsAdmin').checked;
+  const can_view_processes = document.getElementById('modalCanViewProcesses').checked;
+  const can_query_ports = document.getElementById('modalCanQueryPorts').checked;
+  const can_upload_cookies = document.getElementById('modalCanUploadCookies').checked;
+  const ativo = document.getElementById('modalAtivo').checked;
+  const errorDiv = document.getElementById('modalErrorAlert');
+  
+  // Validações básicas
+  if (!userId && (!senha || senha.length < 6 || senha.length > 15)) {
+    errorDiv.textContent = 'A senha para novos usuários deve conter entre 6 e 15 caracteres.';
+    errorDiv.style.display = 'block';
+    return;
+  }
+  if (senha && (senha.length < 6 || senha.length > 15)) {
+    errorDiv.textContent = 'A senha deve conter entre 6 e 15 caracteres.';
+    errorDiv.style.display = 'block';
+    return;
+  }
+  
+  const token = sessionStorage.getItem('lpl_token');
+  const url = userId ? `/api/admin/users/${userId}` : '/api/admin/users';
+  const method = userId ? 'PUT' : 'POST';
+  
+  const payload = {
+    login,
+    email,
+    is_admin,
+    can_view_processes,
+    can_query_ports,
+    can_upload_cookies,
+    ativo
+  };
+  if (senha) payload.senha = senha;
+  
+  try {
+    const response = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    });
+    
+    const result = await response.json();
+    if (response.ok) {
+      closeUserModal();
+      loadAdminUsers();
+    } else {
+      errorDiv.textContent = result.error || 'Erro ao salvar usuário.';
+      errorDiv.style.display = 'block';
+    }
+  } catch (err) {
+    console.error(err);
+    errorDiv.textContent = 'Erro ao conectar ao servidor.';
+    errorDiv.style.display = 'block';
+  }
+}
+
+async function deleteUser(userId, username) {
+  if (!confirm(`Tem certeza de que deseja excluir permanentemente o usuário "${username}"?`)) {
+    return;
+  }
+  
+  const token = sessionStorage.getItem('lpl_token');
+  try {
+    const response = await fetch(`/api/admin/users/${userId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    const result = await response.json();
+    if (response.ok) {
+      loadAdminUsers();
+    } else {
+      alert(result.error || 'Erro ao excluir usuário.');
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Erro de rede ao excluir usuário.');
+  }
+}
+
+// Iniciar verificação de autenticação ao carregar a página
+checkAuth();

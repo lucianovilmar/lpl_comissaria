@@ -3,28 +3,37 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>LPL Comissaria de Despachos Ltda  — Site</title>
+  <title>LPL Comissaria de Despachos Ltda  — Acesso</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body class="theme-dark">
-  <header class="site-header">
-    <div class="header-inner">
-      <img id="logo" src="assets/LPL%20-%20logo.png" alt="Logo da empresa" onerror="this.onerror=null;this.src='assets/placeholder.svg'" />
-      <h1>LPL Comissaria de Despachos Ltda</h1>
-      <button id="themeToggle" class="theme-toggle" aria-label="Alternar tema">🌙</button>
+  <!-- Bloqueio de Acesso Inicial -->
+  <div id="login-wall"></div>
+
+  <!-- Aplicação Principal (Oculta por padrão) -->
+  <div id="main-app" style="display: none;">
+    <header class="site-header">
+      <div class="header-inner">
+        <img id="logo" src="assets/LPL%20-%20logo.png" alt="Logo da empresa" onerror="this.onerror=null;this.src='assets/placeholder.svg'" />
+        <h1>LPL Comissaria de Despachos Ltda</h1>
+        <button id="themeToggle" class="theme-toggle" aria-label="Alternar tema">🌙</button>
+      </div>
+    </header>
+
+    <div class="page">
+      <aside class="sidebar">
+        <button class="nav-btn active" data-page="due">Due</button>
+        <button class="nav-btn" data-page="teste">Teste</button>
+        <button class="nav-btn green-test" data-page="green">Green Teste</button>
+      </aside>
+
+      <section class="content">
+        <div id="content-area"></div>
+      </section>
     </div>
-  </header>
-
-  <div class="page">
-    <aside class="sidebar">
-      <button class="nav-btn active" data-page="due">Due</button>
-      <button class="nav-btn" data-page="teste">Teste</button>
-      <button class="nav-btn green-test" data-page="green">Green Teste</button>
-    </aside>
-
-    <section class="content">
-      <div id="content-area"></div>
-    </section>
   </div>
 
   <script src="app.js"></script>
