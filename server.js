@@ -1,7 +1,10 @@
+require('dotenv').config();
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const XLSX = require('xlsx');
+const bcrypt = require('bcryptjs');
+const db = require('./db');
 const { trackContainer, queryTCP, queryPOA, queryNAV, queryTEC } = require('./ports-crawler');
 
 const PORT = process.env.PORT || 3000;
@@ -18,137 +21,26 @@ const mime = {
   '.json':'application/json'
 };
 
-const DOWNLOADS_EXCEL_PATH = 'C:\\Users\\LVS 06 Dev\\Downloads\\Gestão de Processos - MARFRIG x DESPACHANTES.xlsx';
-const LOCAL_EXCEL_NAME = 'Gestão de Processos - MARFRIG x DESPACHANTES.xlsx';
-let EXCEL_PATH = path.join(__dirname, LOCAL_EXCEL_NAME);
-
-// Resolver o caminho do Excel dinamicamente com prioridade para a pasta do projeto
-try {
-  const files = fs.readdirSync(__dirname);
-  const matchedFile = files.find(f => f.toLowerCase().endsWith('.xlsx') && f.toLowerCase().includes('gest') && !f.startsWith('~$'));
-  if (matchedFile) {
-    EXCEL_PATH = path.join(__dirname, matchedFile);
-  } else if (!fs.existsSync(EXCEL_PATH) && fs.existsSync(DOWNLOADS_EXCEL_PATH)) {
-    EXCEL_PATH = DOWNLOADS_EXCEL_PATH;
-  }
-} catch (e) {
-  if (fs.existsSync(DOWNLOADS_EXCEL_PATH)) {
-    EXCEL_PATH = DOWNLOADS_EXCEL_PATH;
-  }
-}
-
-let cachedData = {};
-let cachedMtime = null;
-
-// Helper to convert Excel serial date to DD/MM/AAAA
-function excelDateToDateString(excelSerial) {
-  if (!excelSerial || isNaN(excelSerial) || excelSerial === "#N/A") return excelSerial;
+// Database-driven lookup helpers
+async function findBookingForContainer(containerCode) {
   try {
-    const date = new Date((excelSerial - 25569) * 86400 * 1000);
-    if (isNaN(date.getTime())) return excelSerial;
-    const day = String(date.getUTCDate()).padStart(2, '0');
-    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const year = date.getUTCFullYear();
-    return `${day}/${month}/${year}`;
-  } catch(e) {
-    return excelSerial;
-  }
-}
-
-// Load Excel data, convert sheets to simple JSON objects, and discard the Workbook to save memory
-function loadExcelData() {
-  let targetPath = EXCEL_PATH;
-  
-  if (!fs.existsSync(targetPath)) {
-    // If main path is not found, search dynamically inside the project directory for any xlsx file
-    try {
-      const files = fs.readdirSync(__dirname);
-      const xlsxFile = files.find(f => f.endsWith('.xlsx') && !f.startsWith('~$'));
-      if (xlsxFile) {
-        targetPath = path.join(__dirname, xlsxFile);
-      }
-    } catch (e) {}
-  }
-  
-  if (!fs.existsSync(targetPath)) {
-    throw new Error('Arquivo Excel de processos não localizado na pasta de downloads nem na pasta do projeto.');
-  }
-  
-  const stats = fs.statSync(targetPath);
-  const mtime = stats.mtimeMs;
-  
-  if (!cachedMtime || cachedMtime !== mtime || Object.keys(cachedData).length === 0) {
-    console.log(`Carregando planilha de processos do Excel de: ${targetPath} (mtime: ${mtime})...`);
-    
-    // Read the file with minimal memory options
-    const wb = XLSX.readFile(targetPath, {
-      cellStyles: false,
-      cellFormulas: false,
-      cellHTML: false
-    });
-    
-    const abas = ["AGUARDANDO EMBARQUE", "DRAFT", "DUE", "RODOVIARIO", "USO MARFRIG"];
-    const newData = {};
-    const dataFields = ['ETA', 'ETS', 'DATA ESTUFAGEM', 'D/L Carga', 'D/L CARGA', 'D/L DRAFT', 'LIBERAÇÃO - BR', 'DATA REGISTRO', 'Chegada do CSI', 'Protocolado'];
-    
-    for (const name of abas) {
-      const sheet = wb.Sheets[name];
-      if (sheet) {
-        const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-        // Format dates immediately to optimize memory and CPU later
-        newData[name] = rows.map(row => {
-          const formattedRow = { ...row };
-          dataFields.forEach(f => {
-            if (formattedRow[f] && typeof formattedRow[f] === 'number') {
-              formattedRow[f] = excelDateToDateString(formattedRow[f]);
-            }
-          });
-          return formattedRow;
-        });
-      } else {
-        newData[name] = [];
-      }
-    }
-    
-    cachedData = newData;
-    cachedMtime = mtime;
-    console.log("Planilha carregada e convertida para JSON de baixo consumo de RAM. Workbook liberado da memória.");
-  }
-  return cachedData;
-}
-
-// Lookup booking code for a container code in the Excel sheet
-function findBookingForContainer(containerCode) {
-  try {
-    const data = loadExcelData();
-    const abas = ["AGUARDANDO EMBARQUE", "DRAFT", "DUE", "USO MARFRIG"];
     const code = containerCode.trim().toUpperCase();
-    
-    for (const name of abas) {
-      const rows = data[name] || [];
-      for (const row of rows) {
-        const containerVal = String(row['CONTAINER'] || row['Container'] || '').trim().toUpperCase();
-        if (containerVal === code) {
-          const bookingVal = String(row['BOOKING'] || row['Booking'] || row['DUE/RUC'] || '').trim();
-          if (bookingVal && bookingVal !== "#N/A") {
-            return bookingVal;
-          }
-        }
-      }
+    const dbRes = await db.query(
+      `SELECT p.booking, p.ruc 
+       FROM conteineres c
+       JOIN processos p ON c.processo_id = p.id
+       WHERE c.numero_conteiner = $1
+       LIMIT 1`,
+      [code]
+    );
+    if (dbRes.rows.length > 0) {
+      const row = dbRes.rows[0];
+      return row.booking || row.ruc || null;
     }
   } catch (e) {
-    console.error('Error finding booking in Excel:', e);
+    console.error('Error finding booking in database:', e);
   }
   return null;
-}
-
-function getProcessosData(abaName) {
-  const data = loadExcelData();
-  const rows = data[abaName];
-  if (!rows) {
-    throw new Error(`Aba "${abaName}" não encontrada no arquivo do Excel.`);
-  }
-  return rows;
 }
 
 // Helper to read JSON body
@@ -242,14 +134,24 @@ const server = http.createServer(async (req, res) => {
     const { login, senha } = await readJsonBody(req);
     
     try {
-      const usersData = fs.readFileSync(path.join(PUBLIC, 'users.json'), 'utf8');
-      const users = JSON.parse(usersData);
+      const dbRes = await db.query('SELECT * FROM usuarios WHERE LOWER(login) = LOWER($1)', [login || '']);
+      const foundUser = dbRes.rows[0];
       
-      const foundUser = users.find(u => u.login.toLowerCase() === (login || '').toLowerCase() && u.senha === senha);
-      
+      let passwordMatch = false;
       if (foundUser) {
+        passwordMatch = bcrypt.compareSync(senha, foundUser.senha);
+      }
+      
+      if (foundUser && passwordMatch) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, user: foundUser.login }));
+        res.end(JSON.stringify({ 
+          success: true, 
+          user: foundUser.login,
+          is_admin: foundUser.is_admin,
+          can_view_processes: foundUser.can_view_processes,
+          can_query_ports: foundUser.can_query_ports,
+          can_upload_cookies: foundUser.can_upload_cookies
+        }));
       } else {
         res.writeHead(401, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false, message: 'Usuário ou senha incorretos.' }));
@@ -326,7 +228,7 @@ const server = http.createServer(async (req, res) => {
         
         let data;
         if (targetPort) {
-          const booking = findBookingForContainer(code);
+          const booking = await findBookingForContainer(code);
           if (booking) {
             console.log(`Booking encontrado no Excel para o contêiner ${code}: ${booking}`);
           }
@@ -424,12 +326,27 @@ const server = http.createServer(async (req, res) => {
   // Endpoint 3: GET /api/processos/summary
   if (reqPath === '/api/processos/summary' && req.method === 'GET') {
     try {
-      const data = loadExcelData();
-      const summary = {};
-      const keyAbas = ["AGUARDANDO EMBARQUE", "DRAFT", "DUE", "RODOVIARIO", "USO MARFRIG"];
-      keyAbas.forEach(aba => {
-        summary[aba] = (data[aba] || []).length;
+      const summaryRes = await db.query(
+        `SELECT origem_aba, COUNT(*) as count 
+         FROM processos 
+         WHERE ativo = true 
+         GROUP BY origem_aba`
+      );
+      
+      const summary = {
+        "AGUARDANDO EMBARQUE": 0,
+        "DRAFT": 0,
+        "DUE": 0,
+        "RODOVIARIO": 0,
+        "USO MARFRIG": 0
+      };
+      
+      summaryRes.rows.forEach(row => {
+        if (summary[row.origem_aba] !== undefined) {
+          summary[row.origem_aba] = parseInt(row.count, 10);
+        }
       });
+
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(summary));
     } catch (err) {
@@ -444,9 +361,55 @@ const server = http.createServer(async (req, res) => {
   if (reqPath === '/api/processos' && req.method === 'GET') {
     const aba = parsedUrl.searchParams.get('aba') || 'AGUARDANDO EMBARQUE';
     try {
-      const data = getProcessosData(aba);
+      const historyAbas = ["Emb. 2026", "Emb. 2025", "Emb. 2024", "Emb. Cancelados"];
+      const ativo = !historyAbas.includes(aba);
+      
+      const dbRes = await db.query(
+        `SELECT 
+           p.exp_code as "EXP", p.exp_code as "EXP Nº", p.exp_code as "Referência",
+           p.exportador as "EXPORTADOR", p.exportador as "Exportador",
+           p.importador as "IMPORTADOR", p.importador as "Importador",
+           p.navio as "NAVIO", p.navio as "Navio",
+           p.booking as "BOOKING", p.booking as "Booking",
+           p.data_estufagem as "DATA ESTUFAGEM",
+           p.dl_draft as "D/L DRAFT",
+           p.dl_carga as "D/L CARGA", p.dl_carga as "D/L Carga",
+           p.eta as "ETA",
+           p.ets as "ETS",
+           p.origem as "ORIGEM", p.origem as "Origem",
+           p.destino as "DESTINO", p.destino as "Destino",
+           p.armador as "ARMADOR", p.armador as "Armador",
+           p.controle_interno as "CONTROLE INTERNO", p.controle_interno as "Controle Interno",
+           p.bysoft as "BYSOFT",
+           p.ruc as "RUC", p.ruc as "DUE/RUC",
+           p.csi as "CSI",
+           p.deposito_no_porto as "DEPÓSITO NO PORTO",
+           p.em_registro as "EM REGISTRO",
+           p.due as "DUE",
+           p.nº_due as "Nº DUE",
+           p.fronteira as "FRONTEIRA",
+           p.pais as "PAÍS",
+           p.transportadora as "TRANSPORTADORA",
+           p.cavalo as "CAVALO",
+           p.carreta as "CARRETA",
+           p.liberacao_br as "LIBERAÇÃO - BR",
+           p.pallets as "PALLETS",
+           p.terminal_atracacao as "Terminal Atracação",
+           p.produto as "Produto",
+           p.protocolado as "Protocolado",
+           c.numero_conteiner as "CONTAINER", c.numero_conteiner as "Container",
+           c.temperatura as "TEMP.",
+           c.amend as "AMEND",
+           c.alterar_provisorio as "ALTERAR\nPROVISÓRIO"
+         FROM processos p
+         LEFT JOIN conteineres c ON p.id = c.processo_id
+         WHERE p.origem_aba = $1 AND p.ativo = $2
+         ORDER BY p.id ASC, c.id ASC`,
+        [aba, ativo]
+      );
+      
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(data));
+      res.end(JSON.stringify(dbRes.rows));
     } catch (err) {
       console.error('Error in processos api:', err);
       res.writeHead(500, { 'Content-Type': 'application/json' });
