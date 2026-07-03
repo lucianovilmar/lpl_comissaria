@@ -1915,6 +1915,34 @@ function renderLplPlanilhaDashboard(username){
     if (bookmarkletBtn) {
       bookmarkletBtn.addEventListener('click', showBookmarkletModal);
     }
+
+    // Buscar status dos cookies inicialmente e configurar polling a cada 5 segundos
+    fetchCookiesStatus();
+    const lplIntervalId = setInterval(() => {
+      // Se o elemento não existe mais (o usuário mudou de página), limpar o interval
+      if (!document.getElementById('lplApisStatusGrid')) {
+        clearInterval(lplIntervalId);
+        return;
+      }
+      fetchCookiesStatus();
+    }, 5000);
+  }
+}
+
+async function fetchCookiesStatus() {
+  try {
+    const response = await fetch('/api/cookies/status');
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success && data.statuses) {
+        Object.keys(data.statuses).forEach(port => {
+          const val = data.statuses[port];
+          updateApiStatus(port, val.status, val.message);
+        });
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching cookies status:', err);
   }
 }
 
@@ -1933,7 +1961,7 @@ function updateApiStatus(port, status, message){
     card.style.borderColor = '#0a84ff';
     badge.style.color = '#0a84ff';
     card.style.animation = 'pulse-active 1.5s infinite';
-  } else if(status === 'success'){
+  } else if(status === 'success' || status === 'online'){
     card.style.borderColor = '#28a745';
     badge.style.color = '#28a745';
     card.style.animation = 'none';
@@ -1941,7 +1969,7 @@ function updateApiStatus(port, status, message){
     card.style.borderColor = '#fd7e14';
     badge.style.color = '#fd7e14';
     card.style.animation = 'none';
-  } else if(status === 'erro api'){
+  } else if(status === 'erro api' || status === 'offline'){
     card.style.borderColor = '#dc3545';
     badge.style.color = '#dc3545';
     card.style.animation = 'none';

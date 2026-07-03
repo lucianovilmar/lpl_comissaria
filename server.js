@@ -295,6 +295,40 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Endpoint 1.6: GET /api/cookies/status
+  if (reqPath === '/api/cookies/status' && req.method === 'GET') {
+    const ports = ['tcp', 'poa', 'nav', 'tec'];
+    const statuses = {};
+    
+    ports.forEach(port => {
+      let fileName = `${port}-cookies.json`;
+      let filePath = path.join(PUBLIC, fileName);
+      if (fs.existsSync(filePath)) {
+        try {
+          const stats = fs.statSync(filePath);
+          const lastUpdated = stats.mtime;
+          const formattedTime = lastUpdated.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+          const formattedDate = lastUpdated.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+          statuses[port] = {
+            status: 'online',
+            message: `Conectado (${formattedDate} às ${formattedTime})`
+          };
+        } catch (e) {
+          statuses[port] = { status: 'offline', message: 'Erro ao verificar' };
+        }
+      } else {
+        statuses[port] = {
+          status: 'offline',
+          message: 'Desconectado (Sem cookies)'
+        };
+      }
+    });
+    
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, statuses }));
+    return;
+  }
+
   if (reqPath === '/api/search' && req.method === 'GET') {
     const containerParam = parsedUrl.searchParams.get('container');
     if (!containerParam) {
