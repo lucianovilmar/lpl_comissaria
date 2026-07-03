@@ -2658,6 +2658,42 @@ function renderProcessosTable(data, abaName, term = '', matchingCount = 0){
   tableArea.innerHTML = html;
 }
 
+function filterTableData(query){
+  const activeBtn = document.querySelector('.process-tab-btn.active');
+  if (!activeBtn) return;
+  const abaName = activeBtn.dataset.aba;
+  
+  const term = query.toLowerCase().trim();
+  
+  if (!term) {
+    renderProcessosTable(currentProcessosData, abaName, '', 0);
+    return;
+  }
+
+  const fieldsToFilter = [
+    'CONTAINER', 'Container', 'BOOKING', 'Booking', 
+    'EXPORTADOR', 'Exportador', 'NAVIO', 'Navio', 
+    'EXP', 'Referência', 'RUC', 'DUE', 'Nº DUE', 'DUE/RUC',
+    'IMPORTADOR', 'Importador', 'Produto'
+  ];
+
+  const matchingRows = [];
+  const nonMatchingRows = [];
+
+  currentProcessosData.forEach(row => {
+    const isMatch = fieldsToFilter.some(field => {
+      const val = row[field];
+      if (val === undefined || val === null) return false;
+      return String(val).toLowerCase().includes(term);
+    });
+    
+    if (isMatch) {
+      matchingRows.push(row);
+    } else {
+      nonMatchingRows.push(row);
+    }
+  });
+
   const orderedData = [...matchingRows, ...nonMatchingRows];
   renderProcessosTable(orderedData, abaName, term, matchingRows.length);
 }
