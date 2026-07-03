@@ -75,7 +75,8 @@ function forwardToLocalAgent(req, res, targetUrlStr) {
         method: req.method,
         headers: {
           ...req.headers,
-          host: targetUrl.host
+          host: targetUrl.host,
+          'ngrok-skip-browser-warning': 'true'
         }
       };
       
@@ -97,7 +98,11 @@ function forwardToLocalAgent(req, res, targetUrlStr) {
         resolve();
       });
       
-      req.pipe(proxyReq, { end: true });
+      if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'DELETE') {
+        proxyReq.end();
+      } else {
+        req.pipe(proxyReq, { end: true });
+      }
     } catch (e) {
       console.error('Erro ao configurar proxy de requisição:', e);
       res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -121,7 +126,8 @@ function enviarCookiesParaAgenteLocal(targetUrlStr, type, cookies) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payload)
+        'Content-Length': Buffer.byteLength(payload),
+        'ngrok-skip-browser-warning': 'true'
       }
     };
     
