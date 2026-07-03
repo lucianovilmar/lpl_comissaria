@@ -609,20 +609,28 @@ const server = http.createServer(async (req, res) => {
       const { login, email, senha, is_admin, can_view_processes, can_query_ports, can_upload_cookies, ativo } = await readJsonBody(req);
       
       // Validações (estilo Green)
-      if (!login || !email || !senha) {
+      if (!login || !email) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Nome de usuário, e-mail e senha são obrigatórios.' }));
-        return;
-      }
-      if (senha.length < 6 || senha.length > 15) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'A senha deve conter entre 6 e 15 caracteres.' }));
+        res.end(JSON.stringify({ error: 'Nome de usuário e e-mail são obrigatórios.' }));
         return;
       }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'O formato do e-mail é inválido.' }));
         return;
+      }
+
+      let finalSenha = senha;
+      let sendEmail = false;
+      if (!finalSenha) {
+        finalSenha = Math.random().toString(36).substring(2, 8).toUpperCase();
+        sendEmail = true;
+      } else {
+        if (finalSenha.length < 6 || finalSenha.length > 15) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'A senha deve conter entre 6 e 15 caracteres.' }));
+          return;
+        }
       }
       
       // Verificar se já existe o login ou e-mail
@@ -636,7 +644,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       
-      const hash = bcrypt.hashSync(senha, 10);
+      const hash = bcrypt.hashSync(finalSenha, 10);
       await db.query(
         `INSERT INTO usuarios (login, email, senha, is_admin, can_view_processes, can_query_ports, can_upload_cookies, ativo) 
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
@@ -651,6 +659,27 @@ const server = http.createServer(async (req, res) => {
           ativo !== false
         ]
       );
+
+      if (sendEmail) {
+        const subject = 'Bem-vindo ao Painel LPL - Cadastre sua senha';
+        const htmlBody = `
+          <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+            <h2 style="color: #0f172a;">Bem-vindo ao Painel LPL</h2>
+            <p>Olá, <strong>${login}</strong>.</p>
+            <p>Um novo usuário foi cadastrado para você no sistema de Gestão e Rastreamento LPL.</p>
+            <p>Para efetuar o seu primeiro acesso e cadastrar sua senha definitiva, use a seguinte senha temporária:</p>
+            <div style="background: #f1f5f9; padding: 12px; font-size: 20px; font-weight: bold; text-align: center; border-radius: 6px; letter-spacing: 2px; margin: 20px 0;">
+              ${finalSenha}
+            </div>
+            <p style="color: #64748b; font-size: 13px;">Recomendamos alterar sua senha provisória logo após o primeiro login.</p>
+            <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+            <p style="font-size: 12px; color: #64748b;">LPL Comissária de Despachos Ltda. - Itajaí/SC</p>
+          </div>
+        `;
+        const textBody = `Olá, ${login}.\n\nUm novo usuário foi cadastrado para você no Painel LPL.\n\nSua senha temporária de acesso é: ${finalSenha}\n\nRecomendamos alterar sua senha após efetuar o login.`;
+        
+        await enviarEmail(email, subject, htmlBody, textBody);
+      }
       
       res.writeHead(201, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, message: 'Usuário cadastrado com sucesso!' }));

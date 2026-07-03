@@ -1455,12 +1455,8 @@ async function generateMinervaExcel(data){
 // ==========================================
 
 function renderLplPlanilha(){
-  const loggedInUser = sessionStorage.getItem('lpl_planilha_user');
-  if(!loggedInUser){
-    renderLplPlanilhaLogin('', 'lpl-planilha');
-  } else {
-    renderLplPlanilhaDashboard(loggedInUser);
-  }
+  const loggedInUser = sessionStorage.getItem('lpl_user') || 'Usuário';
+  renderLplPlanilhaDashboard(loggedInUser);
 }
 
 function renderLplPlanilhaLogin(errorMessage = '', redirectPage = 'lpl-planilha'){
@@ -2356,12 +2352,8 @@ function showBookmarkletModal() {
 let currentProcessosData = []; // Cache do front-end para aba ativa
 
 function renderGestaoProcessos(){
-  const loggedInUser = sessionStorage.getItem('lpl_planilha_user');
-  if(!loggedInUser){
-    renderLplPlanilhaLogin('', 'gestao-processos');
-  } else {
-    renderGestaoProcessosDashboard(loggedInUser);
-  }
+  const loggedInUser = sessionStorage.getItem('lpl_user') || 'Usuário';
+  renderGestaoProcessosDashboard(loggedInUser);
 }
 
 function renderGestaoProcessosDashboard(username){
@@ -2825,9 +2817,9 @@ function openUserModal(user = null) {
           </div>
           
           <div class="field" style="width: 100%;">
-            <label>Senha ${isEdit ? '(Deixe em branco para não alterar)' : ''}</label>
+            <label>Senha (Deixe em branco para manter atual ou enviar e-mail de definição)</label>
             <div class="password-wrapper">
-              <input type="password" id="modalPassword" ${isEdit ? '' : 'required'} placeholder="${isEdit ? 'Senha inalterada' : 'Senha de 6 a 15 caracteres'}" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); color: var(--text); outline: none;">
+              <input type="password" id="modalPassword" placeholder="Senha de 6 a 15 caracteres (opcional)" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); color: var(--text); outline: none;">
               <button type="button" class="toggle-password-btn" onclick="togglePasswordVisibility('modalPassword', this)" tabIndex="-1">👁️</button>
             </div>
           </div>
@@ -2896,11 +2888,6 @@ async function saveUser(e, userId) {
   const errorDiv = document.getElementById('modalErrorAlert');
   
   // Validações básicas
-  if (!userId && (!senha || senha.length < 6 || senha.length > 15)) {
-    errorDiv.textContent = 'A senha para novos usuários deve conter entre 6 e 15 caracteres.';
-    errorDiv.style.display = 'block';
-    return;
-  }
   if (senha && (senha.length < 6 || senha.length > 15)) {
     errorDiv.textContent = 'A senha deve conter entre 6 e 15 caracteres.';
     errorDiv.style.display = 'block';
