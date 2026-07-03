@@ -60,11 +60,21 @@ function setupSidebar() {
     sidebar.innerHTML += `<button class="nav-btn" data-page="admin" style="border-left: 3px solid var(--btn-active-bg); font-weight: 600;">Painel Admin</button>`;
   }
   
-  // 7. Botão Sair (Logout)
+  // 7. Info do Usuário + Botão Sair (Logout)
+  const loggedInUser = sessionStorage.getItem('lpl_user') || 'Usuário';
   sidebar.innerHTML += `
-    <button class="nav-btn" id="logoutBtn" style="margin-top: 30px; border-top: 1px solid var(--border); padding-top: 12px; color: #ef4444; font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
-      <span>Sair</span> <span>🚪</span>
-    </button>
+    <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid var(--border);">
+      <div style="padding: 10px 12px; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+        <span style="font-size: 18px;">👤</span>
+        <div style="display: flex; flex-direction: column; overflow: hidden;">
+          <span style="font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;">${loggedInUser}</span>
+          <span style="font-size: 10px; color: var(--muted);">LPL Comissária</span>
+        </div>
+      </div>
+      <button class="nav-btn" id="logoutBtn" style="margin-top: 0; color: #ef4444; font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
+        <span>Sair</span> <span>🚪</span>
+      </button>
+    </div>
   `;
   
   const navButtons = sidebar.querySelectorAll('.nav-btn');
@@ -1521,19 +1531,14 @@ function renderLplPlanilhaDashboard(username){
     <div class="card" style="position: relative; padding: 24px; border-radius: 12px; border: 1px solid var(--border); background: var(--card-bg);">
       <!-- Header do painel -->
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 16px; flex-wrap: wrap; gap: 12px;">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <div style="width: 10px; height: 10px; background-color: #28a745; border-radius: 50%;"></div>
-          <span style="font-weight: 500; font-size: 16px; color: var(--text);">Usuário: <strong>${username}</strong></span>
-        </div>
+        <h2 style="margin: 0; color: var(--text);">LPL Planilha & Rastreamento</h2>
         <div style="display: flex; align-items: center; gap: 12px;">
-          <button id="lplBookmarkletBtn" class="nav-btn" style="margin: 0; width: auto; font-size: 13px; padding: 6px 12px; background: rgba(188, 152, 85, 0.1); color: #bc9855; border: 1px solid rgba(188, 152, 85, 0.2); border-radius: 6px; display: inline-flex; align-items: center; gap: 6px;">
+          <button id="lplOpenTcpBtn" class="nav-btn" style="margin: 0; width: auto; font-size: 13px; padding: 8px 16px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.02); color: var(--text);" onclick="window.open('https://portal.tcp.com.br', '_blank')">
+            🌐 Abrir Portal TCP
+          </button>
+          <button id="lplBookmarkletBtn" class="nav-btn active" style="margin: 0; width: auto; font-size: 13px; padding: 8px 16px; display: inline-flex; align-items: center; gap: 6px;">
             🔗 Sincronizador 1 Clique
           </button>
-          <label class="nav-btn" style="margin: 0; width: auto; font-size: 13px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.02); color: var(--text);">
-            🔑 Importar Cookies TCP
-            <input type="file" id="lplCookieUploadInput" accept=".json" style="display: none;">
-          </label>
-          <button id="lplLogoutBtn" class="nav-btn" style="margin: 0; width: auto; font-size: 13px; padding: 6px 12px; background: rgba(220, 53, 69, 0.1); color: #ff4a5a; border: 1px solid rgba(220, 53, 69, 0.2); border-radius: 6px;">Sair</button>
         </div>
       </div>
 
@@ -1578,14 +1583,7 @@ function renderLplPlanilhaDashboard(username){
     </div>
   `;
 
-  // Anexar evento de Logout
-  const logoutBtn = document.getElementById('lplLogoutBtn');
-  if(logoutBtn){
-    logoutBtn.addEventListener('click', () => {
-      sessionStorage.removeItem('lpl_planilha_user');
-      renderLplPlanilha();
-    });
-  }
+
 
   // Resultados ativos na sessão
   let activeLplResults = [];
@@ -1910,42 +1908,7 @@ function renderLplPlanilhaDashboard(username){
     bindSinglePortSearch('nav');
     bindSinglePortSearch('tec');
 
-    // Handler para upload de cookies
-    const cookieInput = document.getElementById('lplCookieUploadInput');
-    if (cookieInput) {
-      cookieInput.addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        const reader = new FileReader();
-        reader.onload = async (evt) => {
-          try {
-            const cookies = JSON.parse(evt.target.result);
-            if (!Array.isArray(cookies)) {
-              alert('Formato de cookies inválido. O arquivo deve conter um array JSON de cookies.');
-              return;
-            }
-            
-            const response = await fetch('/api/upload-cookies', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ type: 'tcp', cookies })
-            });
-            
-            const result = await response.json();
-            if (response.ok && result.success) {
-              alert(result.message);
-              updateApiStatus('tcp', 'success', 'Cookies Importados');
-            } else {
-              alert('Erro ao salvar cookies: ' + (result.error || 'Erro desconhecido'));
-            }
-          } catch (err) {
-            alert('Erro ao ler ou processar o arquivo: ' + err.message);
-          }
-        };
-        reader.readAsText(file);
-      });
-    }
+
 
     // Handler para abrir modal do bookmarklet
     const bookmarkletBtn = document.getElementById('lplBookmarkletBtn');
@@ -2292,7 +2255,7 @@ function showBookmarkletModal() {
   }
   
   const origin = window.location.origin;
-  const jsCode = `javascript:(async()=>{const t=document.cookie.split("; ").find(c=>c.startsWith("access_token_portal="));if(!t){alert("Erro: Login do TCP não localizado. Faça login no portal do TCP primeiro!");return}const v=t.split("=")[1];const cookiesArray=document.cookie.split("; ").map(c=>{const p=c.split("=");return{name:p[0].trim(),value:p.slice(1).join("="),domain:".tcp.com.br",path:"/"}});try{const res=await fetch("${origin}/api/upload-cookies",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"tcp",cookies:cookiesArray})});const d=await res.json();if(res.ok&&d.success){alert("Cookies do TCP sincronizados com sucesso!")}else{alert("Erro ao importar: "+(d.error||"Erro no servidor"))}}catch(err){alert("Erro ao enviar para o servidor: "+err.message)}})();`;
+  const jsCode = `javascript:(async()=>{const u=document.getElementById("email")||document.querySelector("input[type='email']")||document.querySelector("input[name='username']");const p=document.getElementById("password")||document.querySelector("input[type='password']")||document.querySelector("input[name='password']");if(u&&p&&!document.cookie.includes("access_token_portal=")){let su=localStorage.getItem("lpl_tcp_user");let sp=localStorage.getItem("lpl_tcp_pass");if(!su||!sp){su=prompt("Insira seu e-mail/login do portal TCP:")||"";sp=prompt("Insira sua senha do portal TCP:")||"";if(su&&sp){localStorage.setItem("lpl_tcp_user",su);localStorage.setItem("lpl_tcp_pass",sp)}}if(su&&sp){u.value=su;p.value=sp;u.dispatchEvent(new Event("input",{bubbles:true}));p.dispatchEvent(new Event("input",{bubbles:true}));alert("Credenciais preenchidas! Clique em Entrar e, apos logar, clique neste favorito de novo para sincronizar.");return}}const t=document.cookie.split("; ").find(c=>c.startsWith("access_token_portal="));if(!t){alert("Erro: Faca login no portal do TCP primeiro, ou clique aqui para preencher as credenciais!");return}const cookiesArray=document.cookie.split("; ").map(c=>{const parts=c.split("=");return{name:parts[0].trim(),value:parts.slice(1).join("="),domain:".tcp.com.br",path:"/"}});try{const res=await fetch("${origin}/api/upload-cookies",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"tcp",cookies:cookiesArray})});const d=await res.json();if(res.ok&&d.success){alert("Cookies do TCP sincronizados com sucesso!")}else{alert("Erro ao importar: "+(d.error||"Erro no servidor"))}}catch(err){alert("Erro ao enviar para o servidor: "+err.message)}})();`;
 
   const modal = document.createElement('div');
   modal.id = 'lplBookmarkletModal';
@@ -2361,11 +2324,7 @@ function renderGestaoProcessosDashboard(username){
     <div class="card" style="padding: 24px; border-radius: 12px; border: 1px solid var(--border); background: var(--card-bg);">
       <!-- Header -->
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 16px;">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <div style="width: 10px; height: 10px; background-color: #28a745; border-radius: 50%;"></div>
-          <span style="font-weight: 500; font-size: 16px; color: var(--text);">Usuário: <strong>${username}</strong></span>
-        </div>
-        <button id="processosLogoutBtn" class="nav-btn" style="margin: 0; width: auto; font-size: 13px; padding: 6px 12px; background: rgba(220, 53, 69, 0.1); color: #ff4a5a; border: 1px solid rgba(220, 53, 69, 0.2); border-radius: 6px;">Sair</button>
+        <h2 style="margin: 0; color: var(--text);">Gestão de Processos</h2>
       </div>
 
       <!-- KPIs Summary -->
@@ -2415,14 +2374,7 @@ function renderGestaoProcessosDashboard(username){
     </div>
   `;
 
-  // Anexar Logout
-  const logoutBtn = document.getElementById('processosLogoutBtn');
-  if(logoutBtn){
-    logoutBtn.addEventListener('click', () => {
-      sessionStorage.removeItem('lpl_planilha_user');
-      renderGestaoProcessos();
-    });
-  }
+
 
   // Carregar KPIs summary
   loadProcessosSummary();
