@@ -107,6 +107,40 @@ function forwardToLocalAgent(req, res, targetUrlStr) {
   });
 }
 
+function enviarCookiesParaAgenteLocal(targetUrlStr, type, cookies) {
+  try {
+    const targetUrl = new URL(targetUrlStr);
+    const isHttps = targetUrl.protocol === 'https:';
+    const client = isHttps ? require('https') : require('http');
+    
+    const payload = JSON.stringify({ type, cookies });
+    const options = {
+      hostname: targetUrl.hostname,
+      port: targetUrl.port || (isHttps ? 443 : 80),
+      path: '/api/upload-cookies',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload)
+      }
+    };
+    
+    console.log(`Sincronizando cookies em segundo plano com o Agente Local: POST ${targetUrl.protocol}//${options.hostname}${options.path}`);
+    const req = client.request(options, (res) => {
+      console.log(`Agente Local respondeu com status: ${res.statusCode} ao envio de cookies.`);
+    });
+    
+    req.on('error', (err) => {
+      console.error('Erro ao enviar cookies para o Agente Local:', err.message);
+    });
+    
+    req.write(payload);
+    req.end();
+  } catch (err) {
+    console.error('Falha ao configurar envio de cookies para o Agente Local:', err);
+  }
+}
+
 // Token HMAC Security helpers
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
@@ -202,9 +236,9 @@ const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const reqPath = decodeURIComponent(parsedUrl.pathname);
 
-  // Se a variável de ambiente SCRAPER_LOCAL_URL estiver definida, encaminha busca e cookies para o agente local
+  // Se a variável de ambiente SCRAPER_LOCAL_URL estiver definida, encaminha busca para o agente local
   const SCRAPER_LOCAL_URL = process.env.SCRAPER_LOCAL_URL;
-  if (SCRAPER_LOCAL_URL && (reqPath === '/api/search' || reqPath === '/api/upload-cookies')) {
+  if (SCRAPER_LOCAL_URL && reqPath === '/api/search') {
     await forwardToLocalAgent(req, res, SCRAPER_LOCAL_URL);
     return;
   }
@@ -285,6 +319,12 @@ const server = http.createServer(async (req, res) => {
     try {
       fs.writeFileSync(filePath, JSON.stringify(cookies, null, 2));
       console.log(`Cookies para ${type.toUpperCase()} atualizados via upload web.`);
+      
+      const SCRAPER_LOCAL_URL = process.env.SCRAPER_LOCAL_URL;
+      if (SCRAPER_LOCAL_URL) {
+        enviarCookiesParaAgenteLocal(SCRAPER_LOCAL_URL, type, cookies);
+      }
+
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, message: `Cookies do terminal ${type.toUpperCase()} atualizados com sucesso!` }));
     } catch (err) {
