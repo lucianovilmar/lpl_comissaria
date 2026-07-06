@@ -679,7 +679,13 @@ async function queryPOA(containerCode, bookingCode) {
       const btn = Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.trim() === 'Buscar');
       if (btn) btn.click();
     });
-    await new Promise(resolve => setTimeout(resolve, 8000));
+    // Aguardar o carregamento da tabela de resultados
+    console.log('Itapoá: Aguardando carregamento da tabela de resultados...');
+    try {
+      await page.waitForSelector('table tbody tr', { timeout: 15000 });
+    } catch (e) {
+      console.log('Itapoá: Tabela de resultados não apareceu.');
+    }
 
     // Verificar se não há registros
     const hasNoResults = await page.evaluate(() => {
@@ -708,9 +714,16 @@ async function queryPOA(containerCode, bookingCode) {
       if (!targetRow) targetRow = rows[0];
       if (!targetRow) return false;
       
-      const btn = targetRow.querySelector('button, a');
-      if (btn) {
-        btn.click();
+      const links = Array.from(targetRow.querySelectorAll('a, button, i'));
+      const lupa = links.find(el => {
+        const title = (el.getAttribute('title') || el.getAttribute('data-original-title') || '').toLowerCase();
+        const html = el.innerHTML.toLowerCase();
+        const className = (el.className || '').toLowerCase();
+        return title.includes('detalhe') || title.includes('visualizar') || html.includes('search') || html.includes('eye') || className.includes('search') || className.includes('eye') || className.includes('lupa') || className.includes('la-eye') || className.includes('la-search');
+      }) || links[0];
+
+      if (lupa) {
+        lupa.click();
         return true;
       }
       return false;

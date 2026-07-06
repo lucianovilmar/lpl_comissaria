@@ -249,15 +249,22 @@ const server = http.createServer(async (req, res) => {
     const targetPort = (parsedUrl.searchParams.get('port') || '').trim().toLowerCase();
     
     if (containerParam && targetPort === 'poa') {
-      try {
-        const booking = await findBookingForContainer(containerParam);
-        if (booking) {
-          console.log(`Render: Booking encontrado no Supabase para o contêiner ${containerParam}: ${booking}. Repassando para o agente local.`);
-          parsedUrl.searchParams.set('booking', booking);
-          req.url = parsedUrl.pathname + parsedUrl.search;
+      const isContainer = /^[A-Z]{4}[0-9]{6,7}$/i.test(containerParam);
+      if (!isContainer) {
+        console.log(`Render: O input "${containerParam}" não parece um contêiner. Assumindo que é o próprio Booking.`);
+        parsedUrl.searchParams.set('booking', containerParam);
+        req.url = parsedUrl.pathname + parsedUrl.search;
+      } else {
+        try {
+          const booking = await findBookingForContainer(containerParam);
+          if (booking) {
+            console.log(`Render: Booking encontrado no Supabase para o contêiner ${containerParam}: ${booking}. Repassando para o agente local.`);
+            parsedUrl.searchParams.set('booking', booking);
+            req.url = parsedUrl.pathname + parsedUrl.search;
+          }
+        } catch (err) {
+          console.error('Render: Erro ao buscar booking no Supabase antes de repassar:', err.message);
         }
-      } catch (err) {
-        console.error('Render: Erro ao buscar booking no Supabase antes de repassar:', err.message);
       }
     }
     
@@ -423,11 +430,16 @@ const server = http.createServer(async (req, res) => {
         if (targetPort) {
           let booking = (parsedUrl.searchParams.get('booking') || '').trim();
           if (!booking) {
-            try {
-              booking = await findBookingForContainer(code);
-            } catch (dbErr) {
-              console.error('Error finding booking in database:', dbErr.message);
-              booking = null;
+            const isContainer = /^[A-Z]{4}[0-9]{6,7}$/i.test(code);
+            if (!isContainer) {
+              booking = code;
+            } else {
+              try {
+                booking = await findBookingForContainer(code);
+              } catch (dbErr) {
+                console.error('Error finding booking in database:', dbErr.message);
+                booking = null;
+              }
             }
           }
           if (booking) {
@@ -475,11 +487,16 @@ const server = http.createServer(async (req, res) => {
         } else {
           let booking = (parsedUrl.searchParams.get('booking') || '').trim();
           if (!booking) {
-            try {
-              booking = await findBookingForContainer(code);
-            } catch (dbErr) {
-              console.error('Error finding booking in database:', dbErr.message);
-              booking = null;
+            const isContainer = /^[A-Z]{4}[0-9]{6,7}$/i.test(code);
+            if (!isContainer) {
+              booking = code;
+            } else {
+              try {
+                booking = await findBookingForContainer(code);
+              } catch (dbErr) {
+                console.error('Error finding booking in database:', dbErr.message);
+                booking = null;
+              }
             }
           }
           if (booking) {
