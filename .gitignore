@@ -9,3 +9,8 @@ build/
 .cache/
 # Cookies de Sessão dos Portos
 *cookies.json
+
+# Executáveis locais
+ngrok
+ngrok.exe
+*.exe
