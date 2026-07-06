@@ -696,6 +696,9 @@ async function queryPOA(containerCode, bookingCode) {
       return null;
     }
 
+    // Aguardar a vinculação de eventos do Vue/SPA
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
     // 1. Encontrar a linha correta e clicar na lupa (detalhes)
     const clickedLupa = await page.evaluate((code) => {
       const table = document.querySelector('table');
@@ -720,7 +723,8 @@ async function queryPOA(containerCode, bookingCode) {
       }) || links[0];
 
       if (lupa) {
-        lupa.click();
+        const clickable = lupa.closest('button, a') || lupa;
+        clickable.click();
         return true;
       }
       return false;
@@ -741,6 +745,9 @@ async function queryPOA(containerCode, bookingCode) {
       await browser.close();
       return null;
     }
+
+    // Aguardar renderização interna do modal e seus eventos
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
     // 3. Extrair os dados da linha correspondente na tabela
     const rowData = await page.evaluate((code) => {
