@@ -633,9 +633,9 @@ async function queryPOA(containerCode, bookingCode) {
       await page.setCookie(...savedCookies);
     }
 
-    // Ir direto para a página de Booking
-    console.log('Itapoá: Acessando página de Booking...');
-    await page.goto('https://clientes.portoitapoa.com/#/consultas/booking', { waitUntil: 'domcontentloaded', timeout: 25000 });
+    // Acessar painel (dashboard)
+    console.log('Itapoá: Acessando Dashboard...');
+    await page.goto('https://clientes.portoitapoa.com/#/dashboard', { waitUntil: 'domcontentloaded', timeout: 25000 });
 
     const needsLogin = await page.evaluate(() => {
       return document.querySelector('input[placeholder="Usuário"]') !== null || window.location.href.includes('/login');
@@ -652,10 +652,15 @@ async function queryPOA(containerCode, bookingCode) {
       
       const cookies = await page.cookies();
       saveCookies(cookies, COOKIES_PATH_POA);
-
-      console.log('Itapoá: Redirecionando para página de Booking...');
-      await page.goto('https://clientes.portoitapoa.com/#/consultas/booking', { waitUntil: 'domcontentloaded', timeout: 25000 });
     }
+
+    // Ir para a página de Booking via hash e recarregar para garantir o carregamento do SPA
+    console.log('Itapoá: Redirecionando para página de Booking...');
+    await page.evaluate(() => {
+      window.location.hash = '#/consultas/booking';
+    });
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    await page.reload({ waitUntil: 'domcontentloaded' });
 
     await page.waitForSelector('input[type="text"]', { timeout: 15000 });
 
