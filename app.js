@@ -1548,9 +1548,13 @@ function renderLplPlanilhaDashboard(username){
         <p style="color: var(--muted); font-size: 14px; margin-bottom: 16px;">Consulte o status do contêiner nos terminais portuários parceiros (TCP, POA, NAV, TEC).</p>
         
         <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
-          <div class="field" style="flex: 1; min-width: 250px; margin-bottom: 0;">
+          <div class="field" style="flex: 1; min-width: 200px; margin-bottom: 0;">
             <label style="margin-bottom: 6px;">Código do Contêiner</label>
             <input type="text" id="lplContainerInput" placeholder="Ex: ABCD1234567" style="width: 100%; box-sizing: border-box; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); color: var(--text); outline: none;">
+          </div>
+          <div class="field" style="flex: 1; min-width: 200px; margin-bottom: 0;">
+            <label style="margin-bottom: 6px;">Booking / Reserva (Itapoá)</label>
+            <input type="text" id="lplBookingInput" placeholder="Ex: 721539548" style="width: 100%; box-sizing: border-box; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); color: var(--text); outline: none;">
           </div>
           <button id="lplSearchBtn" class="nav-btn active" style="margin: 0; padding: 11px 24px; font-weight: bold; width: auto; border-radius: 6px;">Pesquisar</button>
         </div>
@@ -1594,17 +1598,25 @@ function renderLplPlanilhaDashboard(username){
   if(searchBtn && containerInput){
     const doSearch = async () => {
       const containerInputVal = containerInput.value.trim();
-      if(!containerInputVal){
-        alert('Por favor, digite o código do contêiner.');
+      const bookingInput = document.getElementById('lplBookingInput');
+      const bookingInputVal = bookingInput ? bookingInput.value.trim() : '';
+
+      if (!containerInputVal && !bookingInputVal) {
+        alert('Por favor, digite o código do contêiner ou o Booking/Reserva.');
         return;
       }
       
-      const containerCodes = containerInputVal.split(',')
-        .map(c => c.trim().toUpperCase())
-        .filter(Boolean);
+      let containerCodes = [];
+      if (containerInputVal) {
+        containerCodes = containerInputVal.split(',')
+          .map(c => c.trim().toUpperCase())
+          .filter(Boolean);
+      } else {
+        containerCodes = [bookingInputVal.toUpperCase()];
+      }
         
       if(containerCodes.length === 0){
-        alert('Por favor, digite ao menos um código de contêiner válido.');
+        alert('Por favor, digite ao menos um código de contêiner ou Booking válido.');
         return;
       }
       
@@ -1667,7 +1679,14 @@ function renderLplPlanilhaDashboard(username){
             item.style.background = 'rgba(10, 132, 255, 0.04)';
           }
           
-          const response = await fetch(`/api/search?container=${code}`);
+          let searchUrl = `/api/search?container=${code}`;
+          if (bookingInputVal) {
+            searchUrl += `&booking=${encodeURIComponent(bookingInputVal)}`;
+          } else if (!containerInputVal) {
+            searchUrl += `&booking=${encodeURIComponent(code)}`;
+          }
+          
+          const response = await fetch(searchUrl);
           const result = await response.json();
           
           let found = false;
@@ -1758,6 +1777,12 @@ function renderLplPlanilhaDashboard(username){
     containerInput.addEventListener('keydown', (e) => {
       if(e.key === 'Enter') doSearch();
     });
+    const bookingInput = document.getElementById('lplBookingInput');
+    if (bookingInput) {
+      bookingInput.addEventListener('keydown', (e) => {
+        if(e.key === 'Enter') doSearch();
+      });
+    }
 
     // Vincular clique de busca individual para cada cartão de terminal
     const bindSinglePortSearch = (port) => {
@@ -1779,17 +1804,25 @@ function renderLplPlanilhaDashboard(username){
         
         card.addEventListener('click', async () => {
           const containerInputVal = containerInput.value.trim();
-          if(!containerInputVal){
-            alert('Por favor, digite o código do contêiner primeiro.');
+          const bookingInput = document.getElementById('lplBookingInput');
+          const bookingInputVal = bookingInput ? bookingInput.value.trim() : '';
+
+          if(!containerInputVal && !bookingInputVal){
+            alert('Por favor, digite o código do contêiner ou o Booking primeiro.');
             return;
           }
           
-          const containerCodes = containerInputVal.split(',')
-            .map(c => c.trim().toUpperCase())
-            .filter(Boolean);
+          let containerCodes = [];
+          if (containerInputVal) {
+            containerCodes = containerInputVal.split(',')
+              .map(c => c.trim().toUpperCase())
+              .filter(Boolean);
+          } else {
+            containerCodes = [bookingInputVal.toUpperCase()];
+          }
             
           if(containerCodes.length === 0){
-            alert('Por favor, digite ao menos um código de contêiner válido.');
+            alert('Por favor, digite ao menos um código de contêiner ou Booking válido.');
             return;
           }
           
@@ -1843,7 +1876,14 @@ function renderLplPlanilhaDashboard(username){
                 item.style.background = 'rgba(10, 132, 255, 0.04)';
               }
               
-              const response = await fetch(`/api/search?container=${code}&port=${port}`);
+              let searchUrl = `/api/search?container=${code}&port=${port}`;
+              if (bookingInputVal) {
+                searchUrl += `&booking=${encodeURIComponent(bookingInputVal)}`;
+              } else if (!containerInputVal) {
+                searchUrl += `&booking=${encodeURIComponent(code)}`;
+              }
+              
+              const response = await fetch(searchUrl);
               const result = await response.json();
               
               let found = false;
@@ -1894,7 +1934,7 @@ function renderLplPlanilhaDashboard(username){
               await new Promise(resolve => setTimeout(resolve, 800));
             }
             
-            renderResultsList(activeLplResults, containerInputVal.toUpperCase());
+            renderResultsList(activeLplResults, (containerInputVal || bookingInputVal).toUpperCase());
           } catch(err){
             console.error(err);
             updateApiStatus(port, 'erro api', 'Erro de API');
