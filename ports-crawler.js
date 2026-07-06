@@ -742,8 +742,7 @@ async function queryPOA(containerCode, bookingCode) {
       }) || links[0];
 
       if (lupa) {
-        const clickable = lupa.closest('button, a') || lupa;
-        clickable.click();
+        lupa.click();
         return true;
       }
       return false;
