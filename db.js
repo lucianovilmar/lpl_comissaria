@@ -4,7 +4,7 @@ const { Pool } = require('pg');
 const connectionString = process.env.DATABASE_URL;
 
 if (!connectionString) {
-  console.error('FATAL: A variável de ambiente DATABASE_URL não está definida no arquivo .env ou no servidor.');
+  console.warn('AVISO: A variável de ambiente DATABASE_URL não está definida. (Normal para o agente de consulta local, ele funcionará apenas como scraper).');
 }
 
 const pool = new Pool({
