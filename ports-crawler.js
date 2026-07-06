@@ -681,58 +681,230 @@ async function queryPOA(containerCode, bookingCode) {
     });
     await new Promise(resolve => setTimeout(resolve, 8000));
 
-    const result = await page.evaluate((code, booking) => {
+    // Verificar se não há registros
+    const hasNoResults = await page.evaluate(() => {
       const text = document.body.innerText;
-      if (text.includes('Nenhum registro') || text.includes('Não encontrado')) {
-        return null;
-      }
+      return text.includes('Nenhum registro') || text.includes('Não encontrado') || text.includes('Não foi possível encontrar');
+    });
 
-      const table = document.querySelector('table');
-      if (table) {
-        const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.innerText.trim());
-        const rows = Array.from(table.querySelectorAll('tbody tr'));
-        
-        // Se temos um contêiner específico para buscar, filtramos por ele. Se for busca geral por Booking, pegamos a primeira linha.
-        const containerRow = code ? rows.find(row => {
-          const cells = Array.from(row.querySelectorAll('td'));
-          return cells.length > 0 && cells[0].innerText.trim().toUpperCase() === code.toUpperCase();
-        }) : rows[0];
-
-        if (containerRow) {
-          const cells = Array.from(containerRow.querySelectorAll('td')).map(td => td.innerText.trim());
-          const obj = {};
-          headers.forEach((h, idx) => {
-            obj[h] = cells[idx] || '';
-          });
-
-          const history = [];
-          if (obj['Entrada']) history.push({ event: 'Data Chegada', date: obj['Entrada'] });
-          if (obj['Saída']) history.push({ event: 'Data Saída', date: obj['Saída'] });
-
-          return {
-            container: code || cells[0] || 'N/A',
-            status: obj['Despacho Liberado'] === 'SIM' ? 'Liberado' : 'Aguardando liberação',
-            weight: obj['Peso Kg'] ? `${obj['Peso Kg']} kg` : 'N/A',
-            type: obj['ISO'] || 'N/A',
-            vessel: obj['Navio do contêiner'] || 'N/A',
-            booking: booking || 'N/A',
-            location: obj['Situação'] || 'Pátio',
-            history
-          };
-        }
-      }
-
+    if (hasNoResults) {
+      console.log('Itapoá: Nenhum registro encontrado para o booking', finalBookingCode);
+      await browser.close();
       return null;
-    }, finalContainerCode, finalBookingCode);
+    }
+
+    // 1. Encontrar a linha correta e clicar na lupa (detalhes)
+    const clickedLupa = await page.evaluate((code) => {
+      const table = document.querySelector('table');
+      if (!table) return false;
+      const rows = Array.from(table.querySelectorAll('tbody tr'));
+      let targetRow = null;
+      if (code) {
+        targetRow = rows.find(r => {
+          const cells = Array.from(r.querySelectorAll('td'));
+          return cells.length > 1 && cells[1].innerText.trim().toUpperCase() === code.toUpperCase();
+        });
+      }
+      if (!targetRow) targetRow = rows[0];
+      if (!targetRow) return false;
+      
+      const btn = targetRow.querySelector('button, a');
+      if (btn) {
+        btn.click();
+        return true;
+      }
+      return false;
+    }, finalContainerCode);
+
+    if (!clickedLupa) {
+      console.log('Itapoá: Não foi possível clicar na lupa.');
+      await browser.close();
+      return null;
+    }
+
+    // 2. Aguardar a abertura do modal de detalhes
+    console.log('Itapoá: Aguardando abertura do modal de detalhes...');
+    try {
+      await page.waitForSelector('.modal.show', { timeout: 15000 });
+    } catch (e) {
+      console.log('Itapoá: Modal de detalhes não abriu.');
+      await browser.close();
+      return null;
+    }
+
+    // 3. Extrair os dados da linha correspondente na tabela
+    const rowData = await page.evaluate((code) => {
+      const table = document.querySelector('table');
+      if (!table) return null;
+      const rows = Array.from(table.querySelectorAll('tbody tr'));
+      let targetRow = null;
+      if (code) {
+        targetRow = rows.find(r => {
+          const cells = Array.from(r.querySelectorAll('td'));
+          return cells.length > 1 && cells[1].innerText.trim().toUpperCase() === code.toUpperCase();
+        });
+      }
+      if (!targetRow) targetRow = rows[0];
+      if (!targetRow) return null;
+      
+      return Array.from(targetRow.querySelectorAll('td')).map(td => td.innerText.trim());
+    }, finalContainerCode);
+
+    if (!rowData || rowData.length < 12) {
+      console.log('Itapoá: Dados da tabela inválidos ou insuficientes.');
+      await browser.close();
+      return null;
+    }
+
+    // 4. Clicar no botão verde "Detalhes do Agendamento" no modal
+    console.log('Itapoá: Clicando em Detalhes do Agendamento...');
+    const agendamentoClicked = await page.evaluate(() => {
+      const btns = Array.from(document.querySelectorAll('button'));
+      const target = btns.find(b => b.innerText && b.innerText.trim().includes('Detalhes do Agendamento'));
+      if (target) {
+        target.click();
+        return true;
+      }
+      return false;
+    });
+
+    let agendamentoModalText = '';
+    if (agendamentoClicked) {
+      console.log('Itapoá: Aguardando carregamento do agendamento...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      agendamentoModalText = await page.evaluate(() => {
+        const modal = document.querySelector('.modal.show');
+        return modal ? modal.innerText : '';
+      });
+    } else {
+      console.log('Itapoá: Botão de agendamento não encontrado no modal.');
+    }
 
     await browser.close();
 
-    if (!result) return null;
+    // 5. Analisar o texto extraído do agendamento
+    let agNum = 'N/A';
+    let tipoTransacao = 'N/A';
+    let inicioJanela = 'N/A';
+    let fimJanela = 'N/A';
+    let motorista = 'N/A';
+    let cpfMotorista = 'N/A';
+    let cavalo = 'N/A';
+    let carreta = 'N/A';
+
+    if (agendamentoModalText) {
+      const agNumMatch = agendamentoModalText.match(/Ag\.\s*Num\.:\s*([0-9]+)/i);
+      const tipoTransMatch = agendamentoModalText.match(/Tipo\s*Transação:\s*([A-Z]+)/i);
+      const inicioMatch = agendamentoModalText.match(/Inicio\s*da\s*Janela:\s*([0-9]{2}\/[0-9]{2}\/[0-9]{4}\s+[0-9]{2}:[0-9]{2})/i);
+      const fimMatch = agendamentoModalText.match(/Fim\s*da\s*Janela:\s*([0-9]{2}\/[0-9]{2}\/[0-9]{4}\s+[0-9]{2}:[0-9]{2})/i);
+      const motoristaMatch = agendamentoModalText.match(/Nome\s*Motorista:\s*([A-Za-zÀ-ÖØ-öø-ÿ\s]+?)(?=(CPF|Local|$))/i);
+      const cpfMatch = agendamentoModalText.match(/CPF\s*Motorista:\s*([0-9\-.]+)/i);
+      const cavaloMatch = agendamentoModalText.match(/Cavalo:\s*([A-Z0-9]+)/i);
+      const carretaMatch = agendamentoModalText.match(/Carreta:\s*([A-Z0-9]+)/i);
+
+      if (agNumMatch) agNum = agNumMatch[1];
+      if (tipoTransMatch) tipoTransacao = tipoTransMatch[1];
+      if (inicioMatch) inicioJanela = inicioMatch[1];
+      if (fimMatch) fimJanela = fimMatch[1];
+      if (motoristaMatch) motorista = motoristaMatch[1].trim();
+      if (cpfMatch) cpfMotorista = cpfMatch[1];
+      if (cavaloMatch) cavalo = cavaloMatch[1];
+      if (carretaMatch) carreta = carretaMatch[1];
+    }
+
+    const history = [];
+    if (rowData[4]) history.push({ event: 'Depósito (Entrada)', date: rowData[4] });
+    if (rowData[5]) history.push({ event: 'Data Saída', date: rowData[5] });
+    if (fimJanela !== 'N/A') history.push({ event: 'Fim da Janela de Agendamento', date: fimJanela });
+    if (inicioJanela !== 'N/A') history.push({ event: 'Início da Janela de Agendamento', date: inicioJanela });
+
+    const situacaoData = {
+      'Contêiner': rowData[1] || 'N/A',
+      'Status Despacho': rowData[11] === 'SIM' ? 'Liberado' : 'Aguardando liberação',
+      'Peso Declarado (Kg)': rowData[6] || 'N/A',
+      'ISO / Tipo': rowData[2] || 'N/A',
+      'Navio / Viagem': rowData[3] || 'N/A',
+      'Booking': finalBookingCode || 'N/A',
+      'Situação': rowData[9] || 'N/A',
+      'DUE / RUC': rowData[10] || 'N/A',
+      'Lacre': rowData[12] || 'N/A',
+      'Temperatura (°C)': rowData[15] || 'N/A',
+      'POD': rowData[16] || 'N/A',
+      'Deadline': rowData[20] || 'N/A',
+      'Previsão ETB': rowData[18] || 'N/A',
+      'Previsão ETS': rowData[19] || 'N/A'
+    };
+
+    const detalhesData = {
+      kvs: {
+        'Contêiner': rowData[1] || 'N/A',
+        'ISO': rowData[2] || 'N/A',
+        'Navio do contêiner': rowData[3] || 'N/A',
+        'Entrada': rowData[4] || 'N/A',
+        'Saída': rowData[5] || 'N/A',
+        'Peso Kg': rowData[6] || 'N/A',
+        'Peso Agendado': rowData[7] || 'N/A',
+        'Lacre Armador': rowData[12] || 'N/A',
+        'IMO': rowData[13] || 'N/A',
+        'OOG': rowData[14] || 'N/A'
+      }
+    };
+
+    const agendamentoData = {
+      kvs: {
+        'Nº Agendamento': agNum || 'N/A',
+        'Tipo Transação': tipoTransacao || 'N/A',
+        'Início da Janela': inicioJanela || 'N/A',
+        'Fim da Janela': fimJanela || 'N/A',
+        'Nome Motorista': motorista || 'N/A',
+        'CPF Motorista': cpfMotorista || 'N/A',
+        'Placa Cavalo': cavalo || 'N/A',
+        'Placa Carreta': carreta || 'N/A'
+      },
+      timeline: {
+        'Agendamento': agNum !== 'N/A' ? (inicioJanela || 'Agendado') : '-',
+        'SAV': '-',
+        'Entrada Gate': rowData[4] || '-',
+        'Operação': '-',
+        'Saída Gate': rowData[5] || '-'
+      }
+    };
+
+    const stepper = {
+      'Entrada': { 
+        date: rowData[4] || '-', 
+        state: rowData[4] ? 'completed' : 'pending' 
+      },
+      'Aduaneiro': { 
+        date: rowData[11] === 'SIM' ? 'Liberado' : '-', 
+        state: rowData[11] === 'SIM' ? 'completed' : 'active' 
+      },
+      'Embarque': { 
+        date: rowData[5] || '-', 
+        state: rowData[5] ? 'completed' : 'pending' 
+      },
+      'Faturamento': { 
+        date: '-', 
+        state: 'pending' 
+      }
+    };
 
     return {
       api: 'POA',
-      ...result,
-      timeScraped: new Date().toLocaleTimeString('pt-BR')
+      container: rowData[1] || 'N/A',
+      status: rowData[11] === 'SIM' ? 'Liberado' : 'Aguardando liberação',
+      weight: rowData[6] ? `${rowData[6]} kg` : 'N/A',
+      type: rowData[2] || 'N/A',
+      vessel: rowData[3] || 'N/A',
+      booking: finalBookingCode || 'N/A',
+      location: rowData[9] || 'Pátio',
+      timeScraped: new Date().toLocaleTimeString('pt-BR'),
+      history: history,
+      isDetailed: true,
+      stepper: stepper,
+      situacao: situacaoData,
+      detalhes: detalhesData,
+      agendamento: agendamentoData
     };
 
   } catch (error) {
