@@ -633,7 +633,7 @@ async function queryPOA(containerCode, bookingCode) {
     }
 
     // Ir para dashboard
-    await page.goto('https://clientes.portoitapoa.com/#/dashboard', { waitUntil: 'networkidle2', timeout: 25000 });
+    await page.goto('https://clientes.portoitapoa.com/#/dashboard', { waitUntil: 'domcontentloaded', timeout: 25000 });
 
     const needsLogin = await page.evaluate(() => {
       return document.querySelector('input[placeholder="Usuário"]') !== null || window.location.href.includes('/login');
@@ -641,7 +641,7 @@ async function queryPOA(containerCode, bookingCode) {
 
     if (needsLogin) {
       console.log('Itapoá: Efetuando login...');
-      await page.goto('https://clientes.portoitapoa.com/#/login', { waitUntil: 'networkidle2', timeout: 25000 });
+      await page.goto('https://clientes.portoitapoa.com/#/login', { waitUntil: 'domcontentloaded', timeout: 25000 });
       await page.waitForSelector('input[placeholder="Usuário"]', { timeout: 15000 });
       await page.type('input[placeholder="Usuário"]', 'd.lpl-comis.rodrigos');
       await page.type('input[placeholder="Senha"]', 'LPL@2021');

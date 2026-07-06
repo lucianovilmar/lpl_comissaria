@@ -245,6 +245,22 @@ const server = http.createServer(async (req, res) => {
   // Se a variável de ambiente SCRAPER_LOCAL_URL estiver definida, encaminha busca para o agente local
   const SCRAPER_LOCAL_URL = process.env.SCRAPER_LOCAL_URL;
   if (SCRAPER_LOCAL_URL && reqPath === '/api/search') {
+    const containerParam = (parsedUrl.searchParams.get('container') || '').trim();
+    const targetPort = (parsedUrl.searchParams.get('port') || '').trim().toLowerCase();
+    
+    if (containerParam && targetPort === 'poa') {
+      try {
+        const booking = await findBookingForContainer(containerParam);
+        if (booking) {
+          console.log(`Render: Booking encontrado no Supabase para o contêiner ${containerParam}: ${booking}. Repassando para o agente local.`);
+          parsedUrl.searchParams.set('booking', booking);
+          req.url = parsedUrl.pathname + parsedUrl.search;
+        }
+      } catch (err) {
+        console.error('Render: Erro ao buscar booking no Supabase antes de repassar:', err.message);
+      }
+    }
+    
     await forwardToLocalAgent(req, res, SCRAPER_LOCAL_URL);
     return;
   }
@@ -405,9 +421,17 @@ const server = http.createServer(async (req, res) => {
         
         let data;
         if (targetPort) {
-          const booking = await findBookingForContainer(code);
+          let booking = (parsedUrl.searchParams.get('booking') || '').trim();
+          if (!booking) {
+            try {
+              booking = await findBookingForContainer(code);
+            } catch (dbErr) {
+              console.error('Error finding booking in database:', dbErr.message);
+              booking = null;
+            }
+          }
           if (booking) {
-            console.log(`Booking encontrado no Excel para o contêiner ${code}: ${booking}`);
+            console.log(`Booking utilizado para o contêiner ${code}: ${booking}`);
           }
           
           let resVal = null;
@@ -449,9 +473,17 @@ const server = http.createServer(async (req, res) => {
           
           data = { statuses, results };
         } else {
-          const booking = findBookingForContainer(code);
+          let booking = (parsedUrl.searchParams.get('booking') || '').trim();
+          if (!booking) {
+            try {
+              booking = await findBookingForContainer(code);
+            } catch (dbErr) {
+              console.error('Error finding booking in database:', dbErr.message);
+              booking = null;
+            }
+          }
           if (booking) {
-            console.log(`Booking encontrado no Excel para o contêiner ${code}: ${booking}`);
+            console.log(`Booking utilizado para o contêiner ${code}: ${booking}`);
           }
           data = await trackContainer(code, booking);
         }
