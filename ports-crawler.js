@@ -601,13 +601,14 @@ async function queryPOA(containerCode, bookingCode) {
   let finalContainerCode = containerCode;
 
   const isContainer = /^[A-Z]{4}[0-9]{6,7}$/i.test(containerCode.trim());
+  if (!isContainer) {
+    finalContainerCode = '';
+  }
+
   if (!finalBookingCode) {
     if (!isContainer) {
-      // Se não parece com o formato de contêiner, assumimos que o usuário digitou o próprio Booking diretamente
       finalBookingCode = containerCode;
-      finalContainerCode = '';
     } else {
-      // É contêiner, mas sem Booking associado
       return { error: 'erro api', message: 'Booking não localizado na planilha de processos' };
     }
   }
@@ -673,7 +674,7 @@ async function queryPOA(containerCode, bookingCode) {
     // Aguardar o carregamento da tabela de resultados
     console.log('Itapoá: Aguardando carregamento da tabela de resultados...');
     try {
-      await page.waitForSelector('table tbody tr', { timeout: 15000 });
+      await page.waitForSelector('table tbody tr td button, table tbody tr .flaticon2-search', { timeout: 15000 });
     } catch (e) {
       console.log('Itapoá: Tabela de resultados não apareceu.');
     }
