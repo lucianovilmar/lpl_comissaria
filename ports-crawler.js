@@ -632,8 +632,9 @@ async function queryPOA(containerCode, bookingCode) {
       await page.setCookie(...savedCookies);
     }
 
-    // Ir para dashboard
-    await page.goto('https://clientes.portoitapoa.com/#/dashboard', { waitUntil: 'domcontentloaded', timeout: 25000 });
+    // Ir direto para a página de Booking
+    console.log('Itapoá: Acessando página de Booking...');
+    await page.goto('https://clientes.portoitapoa.com/#/consultas/booking', { waitUntil: 'domcontentloaded', timeout: 25000 });
 
     const needsLogin = await page.evaluate(() => {
       return document.querySelector('input[placeholder="Usuário"]') !== null || window.location.href.includes('/login');
@@ -650,20 +651,10 @@ async function queryPOA(containerCode, bookingCode) {
       
       const cookies = await page.cookies();
       saveCookies(cookies, COOKIES_PATH_POA);
+
+      console.log('Itapoá: Redirecionando para página de Booking...');
+      await page.goto('https://clientes.portoitapoa.com/#/consultas/booking', { waitUntil: 'domcontentloaded', timeout: 25000 });
     }
-
-    // Expandir menu Consultas
-    await page.evaluate(() => {
-      const el = Array.from(document.querySelectorAll('.kt-menu__link, span')).find(e => e.innerText && e.innerText.trim() === 'Consultas');
-      if (el) el.click();
-    });
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // Navegar para Booking
-    await page.evaluate(() => {
-      const link = Array.from(document.querySelectorAll('a')).find(a => a.innerText && a.innerText.trim() === 'Booking' && a.href.includes('consultas/booking'));
-      if (link) link.click();
-    });
 
     await page.waitForSelector('input[type="text"]', { timeout: 15000 });
 
