@@ -652,30 +652,49 @@ async function queryPOA(containerCode, bookingCode) {
       
       const cookies = await page.cookies();
       saveCookies(cookies, COOKIES_PATH_POA);
+
+      // Ir para o dashboard após logar
+      await page.goto('https://clientes.portoitapoa.com/#/dashboard', { waitUntil: 'domcontentloaded', timeout: 25000 });
     }
 
-    // Ir para a página de Booking via hash e recarregar para garantir o carregamento do SPA
-    console.log('Itapoá: Redirecionando para página de Booking...');
-    await page.evaluate(() => {
-      window.location.hash = '#/consultas/booking';
-    });
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    // Esperar menus carregarem na dashboard para navegar via SPA client-side
+    console.log('Itapoá: Aguardando carregamento do painel/menu...');
+    await page.waitForSelector('.kt-menu__link', { timeout: 20000 });
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
-    await page.waitForSelector('input[type="text"]', { timeout: 15000 });
+    // Expandir menu Consultas
+    console.log('Itapoá: Expandindo menu Consultas...');
+    await page.evaluate(() => {
+      const el = Array.from(document.querySelectorAll('.kt-menu__link, span')).find(e => e.innerText && e.innerText.trim() === 'Consultas');
+      if (el) el.click();
+    });
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Navegar para Booking
+    console.log('Itapoá: Acessando submenu Booking...');
+    await page.evaluate(() => {
+      const link = Array.from(document.querySelectorAll('a')).find(a => a.innerText && a.innerText.trim() === 'Booking' && a.href.includes('consultas/booking'));
+      if (link) link.click();
+    });
+
+    // Aguardar o formulário da página de Booking carregar
+    await page.waitForSelector('input.form-control', { timeout: 20000 });
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
     // Preencher campo com booking
     await page.evaluate(() => {
-      const inp = document.querySelector('input[type="text"]');
+      const inp = document.querySelector('input.form-control');
       if (inp) inp.value = '';
     });
-    await page.type('input[type="text"]', finalBookingCode);
+    await page.type('input.form-control', finalBookingCode);
 
     // Clicar em Buscar
+    console.log('Itapoá: Iniciando busca...');
     await page.evaluate(() => {
       const btn = Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.trim() === 'Buscar');
       if (btn) btn.click();
     });
+    
     // Aguardar o carregamento da tabela de resultados
     console.log('Itapoá: Aguardando carregamento da tabela de resultados...');
     try {
