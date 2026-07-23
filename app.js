@@ -23,6 +23,11 @@ function checkAuth() {
     // Recapturar o content-area no DOM caso tenha mudado
     contentArea = document.getElementById('content-area');
     setupSidebar();
+    
+    // Forçar redirecionamento para o perfil caso precise redefinir a senha
+    if (sessionStorage.getItem('lpl_requer_redefinicao') === 'true') {
+      loadPage('perfil');
+    }
   }
 }
 
@@ -37,6 +42,33 @@ function setupSidebar() {
   
   // Limpar a barra lateral e recriar dinamicamente conforme as permissões
   sidebar.innerHTML = '';
+  
+  const requerRedefinicao = sessionStorage.getItem('lpl_requer_redefinicao') === 'true';
+  
+  if (requerRedefinicao) {
+    const loggedInUser = sessionStorage.getItem('lpl_user') || 'Usuário';
+    sidebar.innerHTML += `
+      <div style="padding: 10px 12px; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; margin-bottom: 20px;">
+        <span style="font-size: 18px;">👤</span>
+        <div style="display: flex; flex-direction: column; overflow: hidden;">
+          <span style="font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;">${loggedInUser}</span>
+          <span style="font-size: 10px; color: #ef4444; font-weight: bold;">Redefinição Obrigatória</span>
+        </div>
+      </div>
+      <p style="font-size: 11px; color: #f87171; padding: 0 12px; margin: 10px 0; line-height: 1.4;">Você deve cadastrar uma nova senha antes de navegar no painel.</p>
+      <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px;">
+        <button class="nav-btn" id="logoutBtn" style="margin-top: 0; color: #ef4444; font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
+          <span>Sair</span> <span>🚪</span>
+        </button>
+      </div>
+    `;
+    
+    const logoutBtn = sidebar.querySelector('#logoutBtn');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', logout);
+    }
+    return;
+  }
   
   // 1. Due (Livre para todos)
   sidebar.innerHTML += `<button class="nav-btn" data-page="due">Due</button>`;
@@ -175,6 +207,7 @@ function renderLoginWall(alertHtml = '') {
           sessionStorage.setItem('lpl_can_view_processes', String(result.can_view_processes));
           sessionStorage.setItem('lpl_can_query_ports', String(result.can_query_ports));
           sessionStorage.setItem('lpl_can_upload_cookies', String(result.can_upload_cookies));
+          sessionStorage.setItem('lpl_requer_redefinicao', String(result.requer_redefinicao));
           
           checkAuth();
         } else {
@@ -261,6 +294,9 @@ function renderForgotPasswordForm(alertHtml = '') {
 }
 
 function loadPage(page){
+  if (sessionStorage.getItem('lpl_requer_redefinicao') === 'true') {
+    page = 'perfil';
+  }
   if(page === 'due') renderDue();
   else if(page === 'planilha') renderPlanilha();
   else if(page === 'green') renderGreenTest();
@@ -3036,11 +3072,23 @@ async function resetUserPassword(userId, username) {
 
 async function renderPerfil() {
   const contentArea = document.getElementById('content-area');
+  const requerRedefinicao = sessionStorage.getItem('lpl_requer_redefinicao') === 'true';
+
+  const warningHtml = requerRedefinicao
+    ? `<div class="alert alert-warning" style="padding: 12px; border-radius: 6px; margin-bottom: 15px; color: #d97706; background: #fffbeb; border: 1px solid #fef3c7; font-size: 13px; font-weight: 500; text-align: center;">
+         ⚠️ Atenção: Você acessou com uma senha temporária. É obrigatório cadastrar uma nova senha (de 6 a 15 caracteres) para prosseguir.
+       </div>`
+    : '';
+
+  const cancelBtnHtml = requerRedefinicao
+    ? ''
+    : `<button class="btn btn-secondary" id="btnCancelProfile" style="padding: 10px 20px;">Cancelar</button>`;
+
   contentArea.innerHTML = `
     <div class="card" style="max-width: 600px; margin: 0 auto 24px auto;">
       <h2 style="margin-bottom: 20px; color: var(--text); border-bottom: 2px solid var(--border); padding-bottom: 10px;">Meu Perfil</h2>
       
-      <div id="profileAlertArea" style="margin-bottom: 15px;"></div>
+      <div id="profileAlertArea" style="margin-bottom: 15px;">${warningHtml}</div>
       
       <div style="display: flex; flex-direction: column; gap: 16px;">
         <div class="field">
@@ -3074,7 +3122,7 @@ async function renderPerfil() {
         </div>
         
         <div style="display: flex; gap: 12px; margin-top: 10px; justify-content: flex-end;">
-          <button class="btn btn-secondary" id="btnCancelProfile" style="padding: 10px 20px;">Cancelar</button>
+          ${cancelBtnHtml}
           <button class="btn btn-success" id="btnSaveProfile" style="padding: 10px 20px;">Salvar Alterações</button>
         </div>
       </div>
@@ -3149,6 +3197,7 @@ async function renderPerfil() {
       const senha = document.getElementById('profilePasswordInput').value;
       const confirmSenha = document.getElementById('profileConfirmPasswordInput').value;
       const alertArea = document.getElementById('profileAlertArea');
+      const requerRedefinicao = sessionStorage.getItem('lpl_requer_redefinicao') === 'true';
 
       alertArea.innerHTML = '';
 
@@ -3156,6 +3205,15 @@ async function renderPerfil() {
         alertArea.innerHTML = `
           <div class="alert alert-danger" style="padding: 12px; border-radius: 6px; margin-bottom: 15px; color: #ef4444; background: #fef2f2; border: 1px solid #fee2e2;">
             O nome de usuário é obrigatório.
+          </div>
+        `;
+        return;
+      }
+
+      if (requerRedefinicao && !senha) {
+        alertArea.innerHTML = `
+          <div class="alert alert-danger" style="padding: 12px; border-radius: 6px; margin-bottom: 15px; color: #ef4444; background: #fef2f2; border: 1px solid #fee2e2;">
+            A redefinição de senha é obrigatória. Por favor, cadastre uma nova senha.
           </div>
         `;
         return;
@@ -3199,6 +3257,7 @@ async function renderPerfil() {
           // Atualizar o token e o nome de usuário no sessionStorage
           sessionStorage.setItem('lpl_token', result.token);
           sessionStorage.setItem('lpl_user', result.user);
+          sessionStorage.setItem('lpl_requer_redefinicao', String(result.requer_redefinicao));
           
           alertArea.innerHTML = `
             <div class="alert alert-success" style="padding: 12px; border-radius: 6px; margin-bottom: 15px; color: #22c55e; background: #f0fdf4; border: 1px solid #dcfce7;">

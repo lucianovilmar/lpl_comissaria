@@ -410,7 +410,8 @@ const server = http.createServer(async (req, res) => {
           is_admin: foundUser.is_admin,
           can_view_processes: foundUser.can_view_processes,
           can_query_ports: foundUser.can_query_ports,
-          can_upload_cookies: foundUser.can_upload_cookies
+          can_upload_cookies: foundUser.can_upload_cookies,
+          requer_redefinicao: !!foundUser.requer_redefinicao
         });
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -421,7 +422,8 @@ const server = http.createServer(async (req, res) => {
           is_admin: foundUser.is_admin,
           can_view_processes: foundUser.can_view_processes,
           can_query_ports: foundUser.can_query_ports,
-          can_upload_cookies: foundUser.can_upload_cookies
+          can_upload_cookies: foundUser.can_upload_cookies,
+          requer_redefinicao: !!foundUser.requer_redefinicao
         }));
       } else {
         res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -787,7 +789,7 @@ const server = http.createServer(async (req, res) => {
       const tempPass = Math.random().toString(36).substring(2, 8).toUpperCase();
       const hash = bcrypt.hashSync(tempPass, 10);
       
-      await db.query('UPDATE usuarios SET senha = $1 WHERE id = $2', [hash, user.id]);
+      await db.query('UPDATE usuarios SET senha = $1, requer_redefinicao = TRUE WHERE id = $2', [hash, user.id]);
       
       const subject = 'Recuperação de Senha - LPL Comissária';
       const htmlBody = `
@@ -883,7 +885,7 @@ const server = http.createServer(async (req, res) => {
         }
         const hash = bcrypt.hashSync(senha, 10);
         await db.query(
-          'UPDATE usuarios SET login = $1, senha = $2 WHERE id = $3',
+          'UPDATE usuarios SET login = $1, senha = $2, requer_redefinicao = FALSE WHERE id = $3',
           [login.trim(), hash, user.id]
         );
       } else {
@@ -904,7 +906,8 @@ const server = http.createServer(async (req, res) => {
         is_admin: updatedUser.is_admin,
         can_view_processes: updatedUser.can_view_processes,
         can_query_ports: updatedUser.can_query_ports,
-        can_upload_cookies: updatedUser.can_upload_cookies
+        can_upload_cookies: updatedUser.can_upload_cookies,
+        requer_redefinicao: !!updatedUser.requer_redefinicao
       });
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -1101,8 +1104,8 @@ const server = http.createServer(async (req, res) => {
       
       const hash = bcrypt.hashSync(finalSenha, 10);
       await db.query(
-        `INSERT INTO usuarios (login, email, senha, is_admin, can_view_processes, can_query_ports, can_upload_cookies, ativo) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        `INSERT INTO usuarios (login, email, senha, is_admin, can_view_processes, can_query_ports, can_upload_cookies, ativo, requer_redefinicao) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           login.trim(), 
           email.trim(), 
@@ -1111,7 +1114,8 @@ const server = http.createServer(async (req, res) => {
           !!can_view_processes, 
           !!can_query_ports, 
           !!can_upload_cookies,
-          ativo !== false
+          ativo !== false,
+          !!sendEmail
         ]
       );
 
@@ -1213,7 +1217,7 @@ const server = http.createServer(async (req, res) => {
         const hash = bcrypt.hashSync(senha, 10);
         await db.query(
           `UPDATE usuarios 
-           SET login = $1, email = $2, senha = $3, is_admin = $4, can_view_processes = $5, can_query_ports = $6, can_upload_cookies = $7, ativo = $8
+           SET login = $1, email = $2, senha = $3, is_admin = $4, can_view_processes = $5, can_query_ports = $6, can_upload_cookies = $7, ativo = $8, requer_redefinicao = FALSE
            WHERE id = $9`,
           [login.trim(), email.trim(), hash, !!is_admin, !!can_view_processes, !!can_query_ports, !!can_upload_cookies, ativo !== false, userId]
         );
@@ -1267,7 +1271,7 @@ const server = http.createServer(async (req, res) => {
       const tempPass = Math.random().toString(36).substring(2, 8).toUpperCase();
       const hash = bcrypt.hashSync(tempPass, 10);
       
-      await db.query('UPDATE usuarios SET senha = $1 WHERE id = $2', [hash, userId]);
+      await db.query('UPDATE usuarios SET senha = $1, requer_redefinicao = TRUE WHERE id = $2', [hash, userId]);
       
       const subject = 'Redefinição de Senha Requerida - LPL Comissária';
       const htmlBody = `
