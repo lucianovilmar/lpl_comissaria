@@ -55,22 +55,25 @@ function setupSidebar() {
     sidebar.innerHTML += `<button class="nav-btn" data-page="lpl-planilha">LPL Planilha</button>`;
   }
   
-  // 6. Painel Admin (Somente para Administradores)
-  if (sessionStorage.getItem('lpl_is_admin') === 'true') {
-    sidebar.innerHTML += `<button class="nav-btn" data-page="admin" style="border-left: 3px solid var(--btn-active-bg); font-weight: 600;">Painel Admin</button>`;
-  }
-  
+  // 6. Painel Admin (Relocado para a área do usuário abaixo)
+
   // 7. Info do Usuário + Botão Sair (Logout)
   const loggedInUser = sessionStorage.getItem('lpl_user') || 'Usuário';
+  const isAdmin = sessionStorage.getItem('lpl_is_admin') === 'true';
+  const adminBtnHtml = isAdmin ? `
+    <button class="nav-btn" data-page="admin" style="border-left: 3px solid var(--btn-active-bg); font-weight: 600; margin-bottom: 8px;">Painel Admin</button>
+  ` : '';
+
   sidebar.innerHTML += `
-    <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid var(--border);">
-      <div style="padding: 10px 12px; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+    <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px;">
+      <div style="padding: 10px 12px; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
         <span style="font-size: 18px;">👤</span>
         <div style="display: flex; flex-direction: column; overflow: hidden;">
-          <span style="font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;">${loggedInUser}</span>
+          <span id="sidebarUserProfileBtn" style="font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; text-decoration: underline; cursor: pointer; transition: color 0.2s;" onmouseover="this.style.color='var(--btn-active-bg)'" onmouseout="this.style.color='var(--text)'" title="Ver Perfil">${loggedInUser}</span>
           <span style="font-size: 10px; color: var(--muted);">LPL Comissária</span>
         </div>
       </div>
+      ${adminBtnHtml}
       <button class="nav-btn" id="logoutBtn" style="margin-top: 0; color: #ef4444; font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
         <span>Sair</span> <span>🚪</span>
       </button>
@@ -89,6 +92,14 @@ function setupSidebar() {
       loadPage(btn.dataset.page);
     });
   });
+
+  const sidebarUserProfileBtn = sidebar.querySelector('#sidebarUserProfileBtn');
+  if (sidebarUserProfileBtn) {
+    sidebarUserProfileBtn.addEventListener('click', () => {
+      navButtons.forEach(b => b.classList.remove('active'));
+      loadPage('perfil');
+    });
+  }
   
   // Selecionar Due como padrão inicialmente
   const dueBtn = sidebar.querySelector('[data-page="due"]');
@@ -256,6 +267,7 @@ function loadPage(page){
   else if(page === 'lpl-planilha') renderLplPlanilha();
   else if(page === 'gestao-processos') renderGestaoProcessos();
   else if(page === 'admin') renderAdmin();
+  else if(page === 'perfil') renderPerfil();
   else renderTeste();
 }
 
@@ -3016,6 +3028,209 @@ async function resetUserPassword(userId, username) {
   } catch (err) {
     console.error(err);
     alert('Erro de rede ao resetar senha.');
+  }
+}
+
+async function renderPerfil() {
+  const contentArea = document.getElementById('content-area');
+  contentArea.innerHTML = `
+    <div class="card" style="max-width: 600px; margin: 0 auto 24px auto;">
+      <h2 style="margin-bottom: 20px; color: var(--text); border-bottom: 2px solid var(--border); padding-bottom: 10px;">Meu Perfil</h2>
+      
+      <div id="profileAlertArea" style="margin-bottom: 15px;"></div>
+      
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <div class="field">
+          <label style="font-weight: 600; margin-bottom: 6px; display: block;">Nome de Usuário (Login)</label>
+          <input type="text" id="profileLoginInput" class="form-control" style="width: 100%;" placeholder="Digite seu nome de usuário">
+        </div>
+        
+        <div class="field">
+          <label style="font-weight: 600; margin-bottom: 6px; display: block;">E-mail <span style="font-size: 11px; color: var(--muted); font-weight: normal;">(Alterável apenas no Painel Admin)</span></label>
+          <input type="email" id="profileEmailInput" class="form-control" style="width: 100%; background-color: var(--border); cursor: not-allowed;" disabled>
+        </div>
+        
+        <hr style="border: 0; border-top: 1px solid var(--border); margin: 10px 0;">
+        
+        <p style="font-size: 13px; color: var(--muted); margin: 0;">Para alterar sua senha, preencha os campos abaixo. Deixe em branco se deseja manter a atual.</p>
+        
+        <div class="field">
+          <label style="font-weight: 600; margin-bottom: 6px; display: block;">Nova Senha</label>
+          <div style="position: relative;">
+            <input type="password" id="profilePasswordInput" class="form-control" style="width: 100%;" placeholder="Digite a nova senha (mín. 6 caracteres)">
+            <span id="toggleProfilePassEye" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; font-size: 16px; user-select: none;">👁️</span>
+          </div>
+        </div>
+        
+        <div class="field">
+          <label style="font-weight: 600; margin-bottom: 6px; display: block;">Confirmar Nova Senha</label>
+          <div style="position: relative;">
+            <input type="password" id="profileConfirmPasswordInput" class="form-control" style="width: 100%;" placeholder="Confirme a nova senha">
+            <span id="toggleProfileConfirmPassEye" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; font-size: 16px; user-select: none;">👁️</span>
+          </div>
+        </div>
+        
+        <div style="display: flex; gap: 12px; margin-top: 10px; justify-content: flex-end;">
+          <button class="btn btn-secondary" id="btnCancelProfile" style="padding: 10px 20px;">Cancelar</button>
+          <button class="btn btn-success" id="btnSaveProfile" style="padding: 10px 20px;">Salvar Alterações</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Preencher dados iniciais do usuário
+  const token = sessionStorage.getItem('lpl_token');
+  try {
+    const response = await fetch('/api/profile', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (response.ok) {
+      const data = await response.json();
+      document.getElementById('profileLoginInput').value = data.login || '';
+      document.getElementById('profileEmailInput').value = data.email || '';
+    } else {
+      document.getElementById('profileAlertArea').innerHTML = `
+        <div class="alert alert-danger" style="padding: 12px; border-radius: 6px; margin-bottom: 15px; color: #ef4444; background: #fef2f2; border: 1px solid #fee2e2;">
+          Erro ao obter os dados do seu perfil do servidor.
+        </div>
+      `;
+    }
+  } catch (err) {
+    console.error(err);
+  }
+
+  // Toggle de visibilidade da senha
+  const passInput = document.getElementById('profilePasswordInput');
+  const togglePass = document.getElementById('toggleProfilePassEye');
+  if (togglePass && passInput) {
+    togglePass.addEventListener('click', () => {
+      if (passInput.type === 'password') {
+        passInput.type = 'text';
+        togglePass.textContent = '🙈';
+      } else {
+        passInput.type = 'password';
+        togglePass.textContent = '👁️';
+      }
+    });
+  }
+
+  const confirmPassInput = document.getElementById('profileConfirmPasswordInput');
+  const toggleConfirmPass = document.getElementById('toggleProfileConfirmPassEye');
+  if (toggleConfirmPass && confirmPassInput) {
+    toggleConfirmPass.addEventListener('click', () => {
+      if (confirmPassInput.type === 'password') {
+        confirmPassInput.type = 'text';
+        toggleConfirmPass.textContent = '🙈';
+      } else {
+        confirmPassInput.type = 'password';
+        toggleConfirmPass.textContent = '👁️';
+      }
+    });
+  }
+
+  // Botão Cancelar
+  const btnCancel = document.getElementById('btnCancelProfile');
+  if (btnCancel) {
+    btnCancel.addEventListener('click', () => {
+      const dueBtn = document.querySelector('.sidebar [data-page="due"]');
+      if (dueBtn) dueBtn.click();
+      else loadPage('due');
+    });
+  }
+
+  // Botão Salvar
+  const btnSave = document.getElementById('btnSaveProfile');
+  if (btnSave) {
+    btnSave.addEventListener('click', async () => {
+      const login = document.getElementById('profileLoginInput').value.trim();
+      const senha = document.getElementById('profilePasswordInput').value;
+      const confirmSenha = document.getElementById('profileConfirmPasswordInput').value;
+      const alertArea = document.getElementById('profileAlertArea');
+
+      alertArea.innerHTML = '';
+
+      if (!login) {
+        alertArea.innerHTML = `
+          <div class="alert alert-danger" style="padding: 12px; border-radius: 6px; margin-bottom: 15px; color: #ef4444; background: #fef2f2; border: 1px solid #fee2e2;">
+            O nome de usuário é obrigatório.
+          </div>
+        `;
+        return;
+      }
+
+      if (senha) {
+        if (senha.length < 6 || senha.length > 15) {
+          alertArea.innerHTML = `
+            <div class="alert alert-danger" style="padding: 12px; border-radius: 6px; margin-bottom: 15px; color: #ef4444; background: #fef2f2; border: 1px solid #fee2e2;">
+              A senha deve conter entre 6 e 15 caracteres.
+            </div>
+          `;
+          return;
+        }
+        if (senha !== confirmSenha) {
+          alertArea.innerHTML = `
+            <div class="alert alert-danger" style="padding: 12px; border-radius: 6px; margin-bottom: 15px; color: #ef4444; background: #fef2f2; border: 1px solid #fee2e2;">
+              As senhas digitadas não coincidem.
+            </div>
+          `;
+          return;
+        }
+      }
+
+      btnSave.disabled = true;
+      btnSave.textContent = 'Salvando...';
+
+      try {
+        const response = await fetch('/api/profile', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ login, senha })
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+          // Atualizar o token e o nome de usuário no sessionStorage
+          sessionStorage.setItem('lpl_token', result.token);
+          sessionStorage.setItem('lpl_user', result.user);
+          
+          alertArea.innerHTML = `
+            <div class="alert alert-success" style="padding: 12px; border-radius: 6px; margin-bottom: 15px; color: #22c55e; background: #f0fdf4; border: 1px solid #dcfce7;">
+              Perfil atualizado com sucesso!
+            </div>
+          `;
+
+          // Atualizar a barra lateral
+          renderSidebar();
+          
+          setTimeout(() => {
+            const dueBtn = document.querySelector('.sidebar [data-page="due"]');
+            if (dueBtn) dueBtn.click();
+            else loadPage('due');
+          }, 1500);
+        } else {
+          alertArea.innerHTML = `
+            <div class="alert alert-danger" style="padding: 12px; border-radius: 6px; margin-bottom: 15px; color: #ef4444; background: #fef2f2; border: 1px solid #fee2e2;">
+              ${result.error || 'Erro ao atualizar perfil.'}
+            </div>
+          `;
+          btnSave.disabled = false;
+          btnSave.textContent = 'Salvar Alterações';
+        }
+      } catch (err) {
+        console.error(err);
+        alertArea.innerHTML = `
+          <div class="alert alert-danger" style="padding: 12px; border-radius: 6px; margin-bottom: 15px; color: #ef4444; background: #fef2f2; border: 1px solid #fee2e2;">
+            Erro de rede ao salvar alterações.
+          </div>
+        `;
+        btnSave.disabled = false;
+        btnSave.textContent = 'Salvar Alterações';
+      }
+    });
   }
 }
 

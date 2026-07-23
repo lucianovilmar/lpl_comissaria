@@ -712,6 +712,105 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Endpoint 5.1: GET /api/profile
+  if (reqPath === '/api/profile' && req.method === 'GET') {
+    const user = getAuthenticatedUser(req);
+    if (!user) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Não autorizado.' }));
+      return;
+    }
+    try {
+      const dbRes = await db.query('SELECT login, email FROM usuarios WHERE id = $1', [user.id]);
+      if (dbRes.rows.length === 0) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Usuário não encontrado.' }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(dbRes.rows[0]));
+    } catch (err) {
+      console.error('Error fetching profile:', err);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Erro ao obter dados do perfil.' }));
+    }
+    return;
+  }
+
+  // Endpoint 5.2: PUT /api/profile
+  if (reqPath === '/api/profile' && req.method === 'PUT') {
+    const user = getAuthenticatedUser(req);
+    if (!user) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Não autorizado.' }));
+      return;
+    }
+    try {
+      const { login, senha } = await readJsonBody(req);
+      if (!login || !login.trim()) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'O nome de usuário é obrigatório.' }));
+        return;
+      }
+
+      // Verificar duplicidade de login
+      const checkUser = await db.query(
+        'SELECT id FROM usuarios WHERE LOWER(login) = LOWER($1) AND id != $2',
+        [login.trim(), user.id]
+      );
+      if (checkUser.rows.length > 0) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Este nome de usuário já está em uso.' }));
+        return;
+      }
+
+      if (senha) {
+        if (senha.length < 6 || senha.length > 15) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'A senha deve conter entre 6 e 15 caracteres.' }));
+          return;
+        }
+        const hash = bcrypt.hashSync(senha, 10);
+        await db.query(
+          'UPDATE usuarios SET login = $1, senha = $2 WHERE id = $3',
+          [login.trim(), hash, user.id]
+        );
+      } else {
+        await db.query(
+          'UPDATE usuarios SET login = $1 WHERE id = $2',
+          [login.trim(), user.id]
+        );
+      }
+
+      // Obter dados atualizados para gerar o novo token
+      const updatedUserRes = await db.query('SELECT * FROM usuarios WHERE id = $1', [user.id]);
+      const updatedUser = updatedUserRes.rows[0];
+
+      const token = generateToken({
+        id: updatedUser.id,
+        login: updatedUser.login,
+        email: updatedUser.email,
+        is_admin: updatedUser.is_admin,
+        can_view_processes: updatedUser.can_view_processes,
+        can_query_ports: updatedUser.can_query_ports,
+        can_upload_cookies: updatedUser.can_upload_cookies
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: true,
+        message: 'Perfil atualizado com sucesso!',
+        user: updatedUser.login,
+        token: token
+      }));
+    } catch (err) {
+      console.error('Error updating profile:', err);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Erro ao atualizar dados do perfil.' }));
+    }
+    return;
+  }
+
   // Endpoint 6: GET /api/admin/users
   if (reqPath === '/api/admin/users' && req.method === 'GET') {
     if (!checkAdmin(req, res)) return;
