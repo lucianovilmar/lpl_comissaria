@@ -2953,6 +2953,9 @@ async function saveUser(e, userId) {
     
     const result = await response.json();
     if (response.ok) {
+      if (result.message) {
+        alert(result.message);
+      }
       closeUserModal();
       loadAdminUsers();
     } else {

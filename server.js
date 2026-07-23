@@ -913,8 +913,13 @@ const server = http.createServer(async (req, res) => {
         await enviarEmail(email, subject, htmlBody, textBody);
       }
       
+      let successMessage = 'Usuário cadastrado com sucesso!';
+      if (sendEmail) {
+        successMessage = 'Usuário cadastrado com sucesso! Um e-mail com a senha temporária foi enviado para o usuário.';
+      }
+      
       res.writeHead(201, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, message: 'Usuário cadastrado com sucesso!' }));
+      res.end(JSON.stringify({ success: true, message: successMessage }));
     } catch (err) {
       console.error('Error creating user:', err);
       res.writeHead(500, { 'Content-Type': 'application/json' });
