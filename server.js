@@ -200,46 +200,142 @@ function checkAdmin(req, res) {
   return user;
 }
 
+const https = require('https');
+
+function httpsPost(url, headers, body) {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+    const options = {
+      hostname: urlObj.hostname,
+      path: urlObj.pathname,
+      method: 'POST',
+      headers: headers
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        resolve({
+          statusCode: res.statusCode,
+          body: data
+        });
+      });
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+
+    req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
 async function enviarEmail(destinatario, assunto, textoHtml, textoSimples) {
+  // 1. Verificar se há chave da API do Resend
+  if (process.env.RESEND_API_KEY) {
+    try {
+      console.log('Tentando enviar e-mail via API do Resend...');
+      const sender = process.env.SMTP_USER || 'onboarding@resend.dev';
+      const body = {
+        from: `LPL Comissária <${sender}>`,
+        to: [destinatario],
+        subject: assunto,
+        html: textoHtml,
+        text: textoSimples
+      };
+      const res = await httpsPost('https://api.resend.com/emails', {
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json'
+      }, body);
+
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        console.log(`E-mail enviado via Resend com sucesso para ${destinatario}`);
+        return true;
+      } else {
+        console.error('Erro na API do Resend:', res.statusCode, res.body);
+      }
+    } catch (err) {
+      console.error('Falha de conexão com a API do Resend:', err.message);
+    }
+  }
+
+  // 2. Verificar se há chave da API do Brevo
+  if (process.env.BREVO_API_KEY) {
+    try {
+      console.log('Tentando enviar e-mail via API do Brevo...');
+      const senderEmail = process.env.SMTP_USER || 'luciano.lpl@gmail.com';
+      const body = {
+        sender: { name: 'LPL Comissária', email: senderEmail },
+        to: [{ email: destinatario }],
+        subject: assunto,
+        htmlContent: textoHtml,
+        textContent: textoSimples
+      };
+      const res = await httpsPost('https://api.brevo.com/v3/smtp/email', {
+        'accept': 'application/json',
+        'api-key': process.env.BREVO_API_KEY,
+        'content-type': 'application/json'
+      }, body);
+
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        console.log(`E-mail enviado via Brevo com sucesso para ${destinatario}`);
+        return true;
+      } else {
+        console.error('Erro na API do Brevo:', res.statusCode, res.body);
+      }
+    } catch (err) {
+      console.error('Falha de conexão com a API do Brevo:', err.message);
+    }
+  }
+
+  // 3. Fallback para Nodemailer SMTP
   const host = process.env.SMTP_HOST;
   const port = parseInt(process.env.SMTP_PORT, 10);
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
 
-  if (!host || !user || !pass) {
-    console.log('--- SIMULADOR DE E-MAIL ---');
-    console.log(`Para: ${destinatario}`);
-    console.log(`Assunto: ${assunto}`);
-    console.log(`Mensagem:\n${textoSimples}`);
-    console.log('---------------------------\n');
-    return true;
+  if (host && user && pass) {
+    try {
+      console.log('Tentando enviar e-mail via SMTP tradicional (Nodemailer)...');
+      const nodemailer = require('nodemailer');
+      const transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure: port === 465,
+        auth: { user, pass },
+        connectionTimeout: 8000,
+        greetingTimeout: 8000,
+        socketTimeout: 8000,
+        lookup: (hostname, options, callback) => {
+          const dns = require('dns');
+          dns.lookup(hostname, { family: 4 }, callback);
+        }
+      });
+
+      await transporter.sendMail({
+        from: `"LPL Comissária" <${user}>`,
+        to: destinatario,
+        subject: assunto,
+        text: textoSimples,
+        html: textoHtml
+      });
+      console.log(`E-mail enviado via SMTP com sucesso para ${destinatario}`);
+      return true;
+    } catch (err) {
+      console.error('Erro ao enviar e-mail via SMTP:', err.message);
+      return false;
+    }
   }
 
-  try {
-    const transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure: port === 465,
-      auth: { user, pass },
-      // Forçar IPv4 (family: 4) no lookup do socket para evitar ENETUNREACH com IPv6 na Render
-      lookup: (hostname, options, callback) => {
-        return dns.lookup(hostname, { family: 4 }, callback);
-      }
-    });
-
-    await transporter.sendMail({
-      from: `"LPL Comissária" <${user}>`,
-      to: destinatario,
-      subject: assunto,
-      text: textoSimples,
-      html: textoHtml
-    });
-    console.log(`E-mail enviado com sucesso para ${destinatario}`);
-    return true;
-  } catch (err) {
-    console.error('Erro ao enviar e-mail:', err.message);
-    return false;
-  }
+  // 4. Modo Simulador
+  console.log('--- SIMULADOR DE E-MAIL ---');
+  console.log(`Para: ${destinatario}`);
+  console.log(`Assunto: ${assunto}`);
+  console.log(`Mensagem:\n${textoSimples}`);
+  console.log('---------------------------\n');
+  return true;
 }
 
 const server = http.createServer(async (req, res) => {
@@ -843,50 +939,98 @@ const server = http.createServer(async (req, res) => {
         host, 
         port, 
         user: user ? (user.substring(0, 4) + '...@' + (user.split('@')[1] || '')) : null, 
-        hasPass: !!pass 
+        hasPass: !!pass,
+        hasResendKey: !!process.env.RESEND_API_KEY,
+        hasBrevoKey: !!process.env.BREVO_API_KEY
       },
       dnsLookup: null,
-      connectionTest: null
+      resendTest: null,
+      brevoTest: null,
+      smtpTest: null
     };
 
-    try {
-      const ips = await new Promise((resolve, reject) => {
-        dns.lookup(host, { family: 4, all: true }, (err, addresses) => {
-          if (err) reject(err);
-          else resolve(addresses);
+    // 1. Testar DNS se host estiver configurado
+    if (host) {
+      try {
+        const ips = await new Promise((resolve, reject) => {
+          dns.lookup(host, { family: 4, all: true }, (err, addresses) => {
+            if (err) reject(err);
+            else resolve(addresses);
+          });
         });
-      });
-      result.dnsLookup = { success: true, ips };
-    } catch (dnsErr) {
-      result.dnsLookup = { success: false, error: dnsErr.message };
+        result.dnsLookup = { success: true, ips };
+      } catch (dnsErr) {
+        result.dnsLookup = { success: false, error: dnsErr.message };
+      }
     }
 
-    const debugLogs = [];
-    try {
-      const nodemailer = require('nodemailer');
-      const transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure: port === 465,
-        auth: { user, pass },
-        connectionTimeout: 8000,
-        greetingTimeout: 8000,
-        socketTimeout: 8000,
-        debug: true,
-        logger: {
-          info: (msg) => debugLogs.push(msg),
-          warn: (msg) => debugLogs.push('[WARN] ' + msg),
-          error: (msg) => debugLogs.push('[ERROR] ' + msg)
-        },
-        lookup: (hostname, options, callback) => {
-          dns.lookup(hostname, { family: 4 }, callback);
-        }
-      });
+    // 2. Testar API do Resend se chave estiver configurada
+    if (process.env.RESEND_API_KEY) {
+      try {
+        const res = await httpsPost('https://api.resend.com/emails', {
+          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+          'Content-Type': 'application/json'
+        }, {
+          from: 'LPL Comissária <onboarding@resend.dev>',
+          to: ['lucianovs.lpl@gmail.com'],
+          subject: 'Teste de Diagnóstico Resend',
+          text: 'Conexão HTTP OK!'
+        });
+        result.resendTest = { success: res.statusCode >= 200 && res.statusCode < 300, statusCode: res.statusCode, body: res.body };
+      } catch (err) {
+        result.resendTest = { success: false, error: err.message };
+      }
+    }
 
-      await transporter.verify();
-      result.connectionTest = { success: true, message: 'SMTP conectado com sucesso!', logs: debugLogs };
-    } catch (connErr) {
-      result.connectionTest = { success: false, error: connErr.message, code: connErr.code, logs: debugLogs };
+    // 3. Testar API do Brevo se chave estiver configurada
+    if (process.env.BREVO_API_KEY) {
+      try {
+        const senderEmail = process.env.SMTP_USER || 'luciano.lpl@gmail.com';
+        const res = await httpsPost('https://api.brevo.com/v3/smtp/email', {
+          'accept': 'application/json',
+          'api-key': process.env.BREVO_API_KEY,
+          'content-type': 'application/json'
+        }, {
+          sender: { name: 'LPL Comissária', email: senderEmail },
+          to: [{ email: 'lucianovs.lpl@gmail.com' }],
+          subject: 'Teste de Diagnóstico Brevo',
+          textContent: 'Conexão HTTP OK!'
+        });
+        result.brevoTest = { success: res.statusCode >= 200 && res.statusCode < 300, statusCode: res.statusCode, body: res.body };
+      } catch (err) {
+        result.brevoTest = { success: false, error: err.message };
+      }
+    }
+
+    // 4. Testar conexão SMTP tradicional se configurada
+    if (host && user && pass) {
+      const debugLogs = [];
+      try {
+        const nodemailer = require('nodemailer');
+        const transporter = nodemailer.createTransport({
+          host,
+          port,
+          secure: port === 465,
+          auth: { user, pass },
+          connectionTimeout: 8000,
+          greetingTimeout: 8000,
+          socketTimeout: 8000,
+          debug: true,
+          logger: {
+            info: (msg) => debugLogs.push(msg),
+            warn: (msg) => debugLogs.push('[WARN] ' + msg),
+            error: (msg) => debugLogs.push('[ERROR] ' + msg)
+          },
+          lookup: (hostname, options, callback) => {
+            dns.lookup(hostname, { family: 4 }, callback);
+          }
+        });
+
+        await transporter.verify();
+        result.smtpTest = { success: true, message: 'SMTP conectado com sucesso!', logs: debugLogs };
+      } catch (connErr) {
+        result.smtpTest = { success: false, error: connErr.message, code: connErr.code, logs: debugLogs };
+      }
     }
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
