@@ -3207,7 +3207,7 @@ async function renderPerfil() {
           `;
 
           // Atualizar a barra lateral
-          renderSidebar();
+          setupSidebar();
           
           setTimeout(() => {
             const dueBtn = document.querySelector('.sidebar [data-page="due"]');
