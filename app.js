@@ -1,3 +1,29 @@
+// --- REDIRECIONAMENTO VERCEL -> RENDER ---
+if (window.location.hostname.includes('vercel.app')) {
+  document.addEventListener('DOMContentLoaded', () => {
+    document.body.innerHTML = `
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; text-align: center; padding: 20px; box-sizing: border-box;">
+        <div style="background: rgba(30, 41, 59, 0.7); padding: 40px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); max-width: 500px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3); backdrop-filter: blur(8px);">
+          <span style="font-size: 56px; margin-bottom: 24px; display: block;">🚀</span>
+          <h1 style="font-size: 26px; font-weight: 700; margin: 0 0 16px 0; color: #38bdf8; letter-spacing: -0.5px;">O Painel LPL mudou de endereço!</h1>
+          <p style="font-size: 15px; color: #94a3b8; margin: 0 0 32px 0; line-height: 1.6;">
+            Para garantir o funcionamento completo das consultas automáticas e o disparo de e-mails, o sistema foi migrado definitivamente para o novo servidor oficial.
+          </p>
+          <a href="https://lpl-comissaria.onrender.com" style="display: inline-block; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 6px -1px rgba(2, 132, 199, 0.4);" onmouseover="this.style.transform='translateY(-1px)';" onmouseout="this.style.transform='none';">
+            Acessar Novo Site (Render)
+          </a>
+          <p style="font-size: 13px; color: #64748b; margin: 32px 0 0 0;">
+            Redirecionando automaticamente em instantes...
+          </p>
+        </div>
+      </div>
+    `;
+    setTimeout(() => {
+      window.location.replace('https://lpl-comissaria.onrender.com');
+    }, 4000);
+  });
+}
+
 // --- SISTEMA DE AUTENTICAÇÃO E PERMISSÕES ---
 const greenAccessPassword = 'Luiggi9654';
 const greenTestSampleData = [

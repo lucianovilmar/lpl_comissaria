@@ -801,12 +801,15 @@ const server = http.createServer(async (req, res) => {
           <div style="background: #f1f5f9; padding: 12px; font-size: 20px; font-weight: bold; text-align: center; border-radius: 6px; letter-spacing: 2px; margin: 20px 0;">
             ${tempPass}
           </div>
-          <p style="color: #ef4444; font-size: 13px;"><strong>Importante:</strong> Recomendamos alterar esta senha assim que fizer o login em sua conta.</p>
+          <p style="color: #ef4444; font-size: 13px;"><strong>Importante:</strong> Você deverá redefinir esta senha provisória em seu primeiro acesso.</p>
+          <p>Acesse o painel pelo novo link oficial do Render:</p>
+          <p><a href="https://lpl-comissaria.onrender.com" style="display: inline-block; background-color: #0284c7; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Acessar Painel LPL</a></p>
+          <p style="font-size: 12px; color: #64748b; margin-top: 15px;">Link direto: https://lpl-comissaria.onrender.com</p>
           <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
           <p style="font-size: 12px; color: #64748b;">LPL Comissária de Despachos Ltda. - Itajaí/SC</p>
         </div>
       `;
-      const textBody = `Olá, ${user.login}.\n\nUma solicitação de redefinição de senha foi realizada para sua conta.\n\nSua nova senha temporária de acesso é: ${tempPass}\n\nRecomendamos alterar sua senha após efetuar o login.`;
+      const textBody = `Olá, ${user.login}.\n\nUma solicitação de redefinição de senha foi realizada para sua conta.\n\nSua senha temporária de acesso é: ${tempPass}\n\nAcesse o link oficial para entrar e definir sua senha: https://lpl-comissaria.onrender.com`;
       
       const emailSent = await enviarEmail(user.email, subject, htmlBody, textBody);
       
@@ -1130,12 +1133,15 @@ const server = http.createServer(async (req, res) => {
             <div style="background: #f1f5f9; padding: 12px; font-size: 20px; font-weight: bold; text-align: center; border-radius: 6px; letter-spacing: 2px; margin: 20px 0;">
               ${finalSenha}
             </div>
-            <p style="color: #64748b; font-size: 13px;">Recomendamos alterar sua senha provisória logo após o primeiro login.</p>
+            <p style="color: #ef4444; font-size: 13px;"><strong>Importante:</strong> Você deverá redefinir esta senha provisória em seu primeiro acesso.</p>
+            <p>Acesse o painel pelo novo link oficial do Render:</p>
+            <p><a href="https://lpl-comissaria.onrender.com" style="display: inline-block; background-color: #0284c7; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Acessar Painel LPL</a></p>
+            <p style="font-size: 12px; color: #64748b; margin-top: 15px;">Link direto: https://lpl-comissaria.onrender.com</p>
             <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
             <p style="font-size: 12px; color: #64748b;">LPL Comissária de Despachos Ltda. - Itajaí/SC</p>
           </div>
         `;
-        const textBody = `Olá, ${login}.\n\nUm novo usuário foi cadastrado para você no Painel LPL.\n\nSua senha temporária de acesso é: ${finalSenha}\n\nRecomendamos alterar sua senha após efetuar o login.`;
+        const textBody = `Olá, ${login}.\n\nUm novo usuário foi cadastrado no painel LPL.\n\nSua senha temporária é: ${finalSenha}\n\nAcesse o link oficial para entrar e definir sua senha: https://lpl-comissaria.onrender.com`;
         
         await enviarEmail(email, subject, htmlBody, textBody);
       }
@@ -1283,12 +1289,15 @@ const server = http.createServer(async (req, res) => {
           <div style="background: #f1f5f9; padding: 12px; font-size: 20px; font-weight: bold; text-align: center; border-radius: 6px; letter-spacing: 2px; margin: 20px 0;">
             ${tempPass}
           </div>
-          <p style="color: #ef4444; font-size: 13px;"><strong>Importante:</strong> Recomendamos alterar esta senha assim que fizer o login em sua conta.</p>
+          <p style="color: #ef4444; font-size: 13px;"><strong>Importante:</strong> Você deverá redefinir esta senha provisória em seu primeiro acesso.</p>
+          <p>Acesse o painel pelo novo link oficial do Render:</p>
+          <p><a href="https://lpl-comissaria.onrender.com" style="display: inline-block; background-color: #0284c7; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Acessar Painel LPL</a></p>
+          <p style="font-size: 12px; color: #64748b; margin-top: 15px;">Link direto: https://lpl-comissaria.onrender.com</p>
           <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
           <p style="font-size: 12px; color: #64748b;">LPL Comissária de Despachos Ltda. - Itajaí/SC</p>
         </div>
       `;
-      const textBody = `Olá, ${user.login}.\n\nO administrador solicitou o reset da sua senha de acesso ao Painel LPL.\n\nSua nova senha temporária de acesso é: ${tempPass}\n\nRecomendamos alterar sua senha após efetuar o login.`;
+      const textBody = `Olá, ${user.login}.\n\nO administrador solicitou o reset da sua senha de acesso ao Painel LPL.\n\nSua senha temporária é: ${tempPass}\n\nAcesse o link oficial para entrar e definir sua senha: https://lpl-comissaria.onrender.com`;
       
       const emailSent = await enviarEmail(user.email, subject, htmlBody, textBody);
       
