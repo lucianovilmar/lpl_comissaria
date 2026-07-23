@@ -177,9 +177,16 @@ function verifyToken(token) {
 }
 
 function getAuthenticatedUser(req) {
+  let token = null;
   const authHeader = req.headers['authorization'];
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-  const token = authHeader.substring(7);
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7);
+  } else {
+    // Permite ler do query params ?token=... para facilitar testes no navegador
+    const urlObj = new URL(req.url, 'http://localhost');
+    token = urlObj.searchParams.get('token');
+  }
+  if (!token) return null;
   return verifyToken(token);
 }
 
@@ -816,6 +823,74 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Erro ao atualizar dados do perfil.' }));
     }
+    return;
+  }
+
+  // Endpoint Extra: GET /api/debug-smtp (exclusivo para testes de rede do Admin)
+  if (reqPath === '/api/debug-smtp' && req.method === 'GET') {
+    const adminUser = checkAdmin(req, res);
+    if (!adminUser) return;
+
+    const host = process.env.SMTP_HOST;
+    const port = parseInt(process.env.SMTP_PORT, 10);
+    const user = process.env.SMTP_USER;
+    const pass = process.env.SMTP_PASS;
+
+    const dns = require('dns');
+
+    const result = {
+      config: { 
+        host, 
+        port, 
+        user: user ? (user.substring(0, 4) + '...@' + (user.split('@')[1] || '')) : null, 
+        hasPass: !!pass 
+      },
+      dnsLookup: null,
+      connectionTest: null
+    };
+
+    try {
+      const ips = await new Promise((resolve, reject) => {
+        dns.lookup(host, { family: 4, all: true }, (err, addresses) => {
+          if (err) reject(err);
+          else resolve(addresses);
+        });
+      });
+      result.dnsLookup = { success: true, ips };
+    } catch (dnsErr) {
+      result.dnsLookup = { success: false, error: dnsErr.message };
+    }
+
+    const debugLogs = [];
+    try {
+      const nodemailer = require('nodemailer');
+      const transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure: port === 465,
+        auth: { user, pass },
+        connectionTimeout: 8000,
+        greetingTimeout: 8000,
+        socketTimeout: 8000,
+        debug: true,
+        logger: {
+          info: (msg) => debugLogs.push(msg),
+          warn: (msg) => debugLogs.push('[WARN] ' + msg),
+          error: (msg) => debugLogs.push('[ERROR] ' + msg)
+        },
+        lookup: (hostname, options, callback) => {
+          dns.lookup(hostname, { family: 4 }, callback);
+        }
+      });
+
+      await transporter.verify();
+      result.connectionTest = { success: true, message: 'SMTP conectado com sucesso!', logs: debugLogs };
+    } catch (connErr) {
+      result.connectionTest = { success: false, error: connErr.message, code: connErr.code, logs: debugLogs };
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(result, null, 2));
     return;
   }
 
