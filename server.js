@@ -213,7 +213,11 @@ async function enviarEmail(destinatario, assunto, textoHtml, textoSimples) {
       host,
       port,
       secure: port === 465,
-      auth: { user, pass }
+      auth: { user, pass },
+      // Forçar IPv4 (family: 4) no lookup do socket para evitar ENETUNREACH com IPv6 na Render
+      lookup: (hostname, options, callback) => {
+        return dns.lookup(hostname, { family: 4 }, callback);
+      }
     });
 
     await transporter.sendMail({
