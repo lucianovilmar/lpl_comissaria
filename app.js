@@ -174,8 +174,8 @@ function renderLoginWall(alertHtml = '') {
   loginWall.innerHTML = `
     <div class="login-card">
       <img src="assets/LPL%20-%20logo.png" alt="LPL Logo" class="login-logo" onerror="this.onerror=null;this.src='assets/placeholder.svg';">
-      <h2 class="login-title">LPL Comissária</h2>
-      <p class="login-subtitle">Gestão de Processos e Rastreamento</p>
+      <h2 class="login-title">Portal de Relatórios LPL</h2>
+      <p class="login-subtitle">Acesso Restrito aos Usuários do Sistema</p>
       
       ${alertHtml}
       
@@ -197,12 +197,24 @@ function renderLoginWall(alertHtml = '') {
           <button type="button" class="login-link" onclick="renderForgotPasswordForm()">Esqueceu sua senha?</button>
         </div>
         
-        <button type="submit" class="login-btn">Entrar</button>
+        <button type="submit" class="login-btn">Entrar no Sistema</button>
       </form>
       
+      <p class="login-bysoft-caption">Autenticação direta com a base de usuários do Bysoft i-Global.</p>
+      
+      <hr class="login-divider">
+      
+      <div class="developer-section">
+        <div class="developer-label">Desenvolvido por</div>
+        <a href="#" class="developer-badge" onclick="event.preventDefault();">
+          <img src="assets/logo_lvs_escudo.png" alt="LVS Logo" class="developer-logo" onerror="this.onerror=null;this.src='assets/placeholder.svg';">
+          <span class="developer-text-lvs">LVS</span>
+          <span class="developer-text-rest">Tech Solutions Ltda.</span>
+        </a>
+      </div>
+      
       <div class="login-footer">
-        LPL Comissária de Despachos Ltda.<br>
-        Matriz: Itajaí/SC — Filial: Rio Grande/RS
+        © 2026 LPL Comissaria de Despachos Ltda. Todos os direitos reservados.
       </div>
     </div>
   `;
@@ -281,9 +293,19 @@ function renderForgotPasswordForm(alertHtml = '') {
         <button type="button" class="login-btn-secondary" onclick="renderLoginWall()">Voltar para o Login</button>
       </form>
       
+      <hr class="login-divider">
+      
+      <div class="developer-section">
+        <div class="developer-label">Desenvolvido por</div>
+        <a href="#" class="developer-badge" onclick="event.preventDefault();">
+          <img src="assets/logo_lvs_escudo.png" alt="LVS Logo" class="developer-logo" onerror="this.onerror=null;this.src='assets/placeholder.svg';">
+          <span class="developer-text-lvs">LVS</span>
+          <span class="developer-text-rest">Tech Solutions Ltda.</span>
+        </a>
+      </div>
+      
       <div class="login-footer">
-        LPL Comissária de Despachos Ltda.<br>
-        Matriz: Itajaí/SC — Filial: Rio Grande/RS
+        © 2026 LPL Comissaria de Despachos Ltda. Todos os direitos reservados.
       </div>
     </div>
   `;
