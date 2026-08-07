@@ -534,6 +534,55 @@ function renderPlanilha(){
         </div>
       </div>
 
+      <!-- Opções de Seleção: CNPJ, Código do Produto e Botão Registrar -->
+      <div class="row" id="opcoesPlanilhaArea" style="margin-top:20px; flex-direction:column; gap:14px; padding:18px; border:1px solid var(--border); border-radius:8px; background:rgba(255,255,255,0.02);">
+        <h4 style="margin:0 0 4px 0; color:var(--text); font-size:14px; font-weight:600;">Opções de Filtragem do Excel</h4>
+        
+        <div style="display:flex; gap:16px; flex-wrap:wrap; width:100%; align-items:flex-end;">
+          <div class="field" style="flex:1; min-width:220px;">
+            <label for="selectCNPJ" style="font-weight:600; font-size:13px; color:var(--text);">CNPJ Emitente:</label>
+            <select id="selectCNPJ" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:6px; background:var(--card-bg); color:var(--text); font-size:13px; cursor:pointer;">
+              <option value="">-- Todos os CNPJs --</option>
+            </select>
+          </div>
+
+          <div class="field" style="flex:1; min-width:220px;">
+            <label for="selectCodigoProduto" style="font-weight:600; font-size:13px; color:var(--text);">Código do Produto:</label>
+            <select id="selectCodigoProduto" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:6px; background:var(--card-bg); color:var(--text); font-size:13px; cursor:pointer;">
+              <option value="">-- Todos os Produtos --</option>
+            </select>
+          </div>
+
+          <div style="margin-bottom:2px;">
+            <button id="btnRegistrarFiltro" class="nav-btn active" style="margin:0; width:auto; padding:10px 20px; font-weight:600; background:#0b5; display:inline-flex; align-items:center; gap:6px;">
+              ➕ Registrar
+            </button>
+          </div>
+        </div>
+
+        <!-- Tabela da Lista de Produtos Registrados no Filtro -->
+        <div id="registeredFilterContainer" style="margin-top:8px; display:none; width:100%;">
+          <div style="font-size:13px; font-weight:600; color:var(--text); margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+            <span>Produtos Registrados no Filtro:</span>
+            <span id="registeredCNPJBadge" style="font-size:12px; padding:3px 10px; border-radius:12px; background:rgba(10,132,255,0.15); color:#0a84ff; font-weight:600;"></span>
+          </div>
+          
+          <div style="border:1px solid var(--border); border-radius:6px; background:var(--card-bg); overflow:hidden;">
+            <table style="width:100%; border-collapse:collapse; font-size:12px;">
+              <thead>
+                <tr style="background:rgba(255,255,255,0.05); text-align:left; color:var(--text);">
+                  <th style="padding:8px 12px; border-bottom:1px solid var(--border);">Código</th>
+                  <th style="padding:8px 12px; border-bottom:1px solid var(--border);">Descrição do Produto</th>
+                  <th style="padding:8px 12px; border-bottom:1px solid var(--border); width:70px; text-align:center;">Ação</th>
+                </tr>
+              </thead>
+              <tbody id="registeredFilterTbody">
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <div class="row" style="justify-content:flex-end; margin-top:10px;">
         <button id="btnExportar" class="nav-btn active" style="margin:0;">Exportar</button>
       </div>
@@ -552,8 +601,10 @@ function attachPlanilhaEvents(){
   const btnExportar = document.getElementById('btnExportar');
   const xlsxInput = document.getElementById('xlsxInput');
   const btnLimparXML = document.getElementById('btnLimparXML');
+  const selectCNPJ = document.getElementById('selectCNPJ');
+  const selectCodigoProduto = document.getElementById('selectCodigoProduto');
+  const btnRegistrarFiltro = document.getElementById('btnRegistrarFiltro');
 
-  // Pre-carregar biblioteca ExcelJS para exportação com estilos fiéis
   if(!window.ExcelJS){
     loadScript('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js').catch(console.error);
   }
@@ -564,12 +615,66 @@ function attachPlanilhaEvents(){
     });
   }
 
+  if(selectCNPJ){
+    selectCNPJ.addEventListener('change', () => {
+      const newCnpj = selectCNPJ.value;
+      if (newCnpj !== window.activeFilterCNPJ) {
+        window.activeFilterCNPJ = newCnpj;
+        window.activeFilterProducts = [];
+        renderRegisteredFilterList();
+      }
+      updateProdutoCombobox(window.currentPlanilhaData || [], newCnpj);
+    });
+  }
+
+  if(btnRegistrarFiltro){
+    btnRegistrarFiltro.addEventListener('click', () => {
+      const cnpj = selectCNPJ ? selectCNPJ.value : '';
+      const codigo = selectCodigoProduto ? selectCodigoProduto.value : '';
+
+      if(!cnpj){
+        alert('Por favor, selecione um CNPJ Emitente antes de registrar.');
+        return;
+      }
+      if(!codigo){
+        alert('Por favor, selecione um Código de Produto para registrar.');
+        return;
+      }
+
+      if(!window.activeFilterProducts) window.activeFilterProducts = [];
+
+      // Verificar se produto já foi registrado
+      const exists = window.activeFilterProducts.some(p => p.codigo === codigo);
+      if(exists){
+        alert('Este código de produto já está registrado na lista.');
+        return;
+      }
+
+      // Buscar descrição do produto nos dados importados
+      const allData = window.currentPlanilhaData || [];
+      const item = allData.find(d => d.CNPJ === cnpj && d.Codigo === codigo);
+      const desc = item ? item.Descricao : (selectCodigoProduto.options[selectCodigoProduto.selectedIndex]?.text.split(' - ').slice(1).join(' - ') || '');
+
+      window.activeFilterCNPJ = cnpj;
+      window.activeFilterProducts.push({
+        codigo: codigo,
+        descricao: desc
+      });
+
+      renderRegisteredFilterList();
+    });
+  }
+
   if(btnLimparXML){
     btnLimparXML.addEventListener('click', () => {
       window.currentPlanilhaData = [];
+      window.activeFilterCNPJ = '';
+      window.activeFilterProducts = [];
       if(xmlInput) xmlInput.value = '';
       if(previewArea) previewArea.innerHTML = '<div style="text-align:center; color:#888; margin-top:20px;">Dados Detalhados</div>';
       if(previewAreaSummary) previewAreaSummary.innerHTML = '<div style="text-align:center; color:#888; margin-top:20px;">Resumo por CNPJ e Produto</div>';
+      updateCNPJCombobox([]);
+      renderRegisteredFilterList();
       alert('Dados limpos com sucesso.');
     });
   }
@@ -1320,6 +1425,125 @@ function renderPreviewTables(data){
   });
   htmlSummary += '</tbody></table>';
   if(containerSummary) containerSummary.innerHTML = htmlSummary;
+
+  // Atualizar comboboxes dependentes de CNPJ e Código de Produto
+  updateCNPJCombobox(data);
+}
+
+function updateCNPJCombobox(data) {
+  const selectCNPJ = document.getElementById('selectCNPJ');
+  if (!selectCNPJ) return;
+
+  const currentSelection = selectCNPJ.value;
+  selectCNPJ.innerHTML = '<option value="">-- Todos os CNPJs --</option>';
+
+  if (!data || data.length === 0) {
+    updateProdutoCombobox([], '');
+    return;
+  }
+
+  const cnpjMap = new Map();
+  data.forEach(item => {
+    const rawCnpj = item.CNPJ || '';
+    if (!rawCnpj) return;
+    if (!cnpjMap.has(rawCnpj)) {
+      let cnpjFmt = rawCnpj;
+      if (rawCnpj.length === 14) {
+        cnpjFmt = rawCnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+      }
+      const label = item.Emitente ? `${cnpjFmt} (${item.Emitente})` : cnpjFmt;
+      cnpjMap.set(rawCnpj, label);
+    }
+  });
+
+  cnpjMap.forEach((label, rawCnpj) => {
+    const opt = document.createElement('option');
+    opt.value = rawCnpj;
+    opt.textContent = label;
+    selectCNPJ.appendChild(opt);
+  });
+
+  if (currentSelection && cnpjMap.has(currentSelection)) {
+    selectCNPJ.value = currentSelection;
+  }
+
+  updateProdutoCombobox(data, selectCNPJ.value);
+}
+
+function updateProdutoCombobox(data, selectedCNPJ) {
+  const selectCodigoProduto = document.getElementById('selectCodigoProduto');
+  if (!selectCodigoProduto) return;
+
+  const currentSelection = selectCodigoProduto.value;
+  selectCodigoProduto.innerHTML = '<option value="">-- Todos os Produtos --</option>';
+
+  if (!data || data.length === 0) return;
+
+  const filteredData = selectedCNPJ 
+    ? data.filter(item => item.CNPJ === selectedCNPJ)
+    : data;
+
+  const prodMap = new Map();
+  filteredData.forEach(item => {
+    const codigo = item.Codigo || '';
+    if (!codigo) return;
+    if (!prodMap.has(codigo)) {
+      const label = item.Descricao ? `${codigo} - ${item.Descricao}` : codigo;
+      prodMap.set(codigo, label);
+    }
+  });
+
+  prodMap.forEach((label, codigo) => {
+    const opt = document.createElement('option');
+    opt.value = codigo;
+    opt.textContent = label;
+    selectCodigoProduto.appendChild(opt);
+  });
+
+  if (currentSelection && prodMap.has(currentSelection)) {
+    selectCodigoProduto.value = currentSelection;
+  }
+}
+
+function renderRegisteredFilterList() {
+  const container = document.getElementById('registeredFilterContainer');
+  const tbody = document.getElementById('registeredFilterTbody');
+  const badge = document.getElementById('registeredCNPJBadge');
+
+  if (!container || !tbody) return;
+
+  const products = window.activeFilterProducts || [];
+  const cnpj = window.activeFilterCNPJ || '';
+
+  if (products.length === 0 || !cnpj) {
+    container.style.display = 'none';
+    tbody.innerHTML = '';
+    return;
+  }
+
+  let cnpjFmt = cnpj;
+  if (cnpj.length === 14) {
+    cnpjFmt = cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+  }
+  if (badge) badge.innerText = `CNPJ: ${cnpjFmt}`;
+
+  container.style.display = 'block';
+  tbody.innerHTML = products.map((p, idx) => `
+    <tr>
+      <td style="padding:7px 12px; border-bottom:1px solid var(--border); color:var(--text);"><strong>${p.codigo}</strong></td>
+      <td style="padding:7px 12px; border-bottom:1px solid var(--border); color:var(--text);">${p.descricao || '-'}</td>
+      <td style="padding:7px 12px; border-bottom:1px solid var(--border); text-align:center;">
+        <button onclick="removeRegisteredFilterItem(${idx})" style="background:transparent; border:none; cursor:pointer; font-size:14px; padding:2px 6px; border-radius:4px; transition:background 0.2s;" title="Remover produto da lista" onmouseover="this.style.background='rgba(239,68,68,0.15)'" onmouseout="this.style.background='transparent'">❌</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function removeRegisteredFilterItem(index) {
+  if (window.activeFilterProducts && window.activeFilterProducts[index]) {
+    window.activeFilterProducts.splice(index, 1);
+    renderRegisteredFilterList();
+  }
 }
 
 function calculateAggregation(data){
