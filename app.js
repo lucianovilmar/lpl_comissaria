@@ -534,10 +534,11 @@ function renderPlanilha(){
         </div>
       </div>
 
-      <!-- Opções de Seleção: CNPJ, Código do Produto e Botão Registrar -->
-      <div class="row" id="opcoesPlanilhaArea" style="margin-top:20px; flex-direction:column; gap:14px; padding:18px; border:1px solid var(--border); border-radius:8px; background:rgba(255,255,255,0.02);">
-        <h4 style="margin:0 0 4px 0; color:var(--text); font-size:14px; font-weight:600;">Opções de Filtragem do Excel</h4>
+      <!-- Opções de Seleção: CNPJ, Código do Produto e Agrupamentos -->
+      <div class="row" id="opcoesPlanilhaArea" style="margin-top:20px; flex-direction:column; gap:16px; padding:18px; border:1px solid var(--border); border-radius:8px; background:rgba(255,255,255,0.02);">
+        <h4 style="margin:0 0 4px 0; color:var(--text); font-size:14px; font-weight:600;">Opções de Filtragem e Agrupamento do Excel</h4>
         
+        <!-- 1. Seleção de CNPJ e Produto -->
         <div style="display:flex; gap:16px; flex-wrap:wrap; width:100%; align-items:flex-end;">
           <div class="field" style="flex:1; min-width:220px;">
             <label for="selectCNPJ" style="font-weight:600; font-size:13px; color:var(--text);">CNPJ Emitente:</label>
@@ -554,20 +555,20 @@ function renderPlanilha(){
           </div>
 
           <div style="margin-bottom:2px;">
-            <button id="btnRegistrarFiltro" class="nav-btn active" style="margin:0; width:auto; padding:10px 20px; font-weight:600; background:#0b5; display:inline-flex; align-items:center; gap:6px;">
-              ➕ Registrar
+            <button id="btnAddProdutoToDraft" class="nav-btn active" style="margin:0; width:auto; padding:10px 18px; font-weight:600; background:#0b5; display:inline-flex; align-items:center; gap:6px;">
+              ➕ Adicionar Produto
             </button>
           </div>
         </div>
 
-        <!-- Tabela da Lista de Produtos Registrados no Filtro -->
-        <div id="registeredFilterContainer" style="margin-top:8px; display:none; width:100%;">
+        <!-- LISTA 1: Monte o Agrupamento (Rascunho de Produtos) -->
+        <div id="draftGroupContainer" style="margin-top:4px; display:none; width:100%; padding:14px; border:1px dashed #0a84ff; border-radius:6px; background:rgba(10,132,255,0.03);">
           <div style="font-size:13px; font-weight:600; color:var(--text); margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-            <span>Produtos Registrados no Filtro:</span>
-            <span id="registeredCNPJBadge" style="font-size:12px; padding:3px 10px; border-radius:12px; background:rgba(10,132,255,0.15); color:#0a84ff; font-weight:600;"></span>
+            <span>📋 Monte o Agrupamento (Produtos Selecionados):</span>
+            <span id="draftCNPJBadge" style="font-size:12px; padding:3px 10px; border-radius:12px; background:rgba(10,132,255,0.15); color:#0a84ff; font-weight:600;"></span>
           </div>
           
-          <div style="border:1px solid var(--border); border-radius:6px; background:var(--card-bg); overflow:hidden;">
+          <div style="border:1px solid var(--border); border-radius:6px; background:var(--card-bg); overflow:hidden; margin-bottom:12px;">
             <table style="width:100%; border-collapse:collapse; font-size:12px;">
               <thead>
                 <tr style="background:rgba(255,255,255,0.05); text-align:left; color:var(--text);">
@@ -576,7 +577,35 @@ function renderPlanilha(){
                   <th style="padding:8px 12px; border-bottom:1px solid var(--border); width:70px; text-align:center;">Ação</th>
                 </tr>
               </thead>
-              <tbody id="registeredFilterTbody">
+              <tbody id="draftFilterTbody">
+              </tbody>
+            </table>
+          </div>
+
+          <div style="display:flex; justify-content:flex-end;">
+            <button id="btnSaveAgrupamento" class="nav-btn active" style="margin:0; width:auto; padding:8px 20px; font-weight:bold; background:#0a84ff; display:inline-flex; align-items:center; gap:6px;">
+              📥 Salvar Agrupamento na Lista Final
+            </button>
+          </div>
+        </div>
+
+        <!-- LISTA 2: Lista Final de Agrupamentos Registrados (usados na criação do Excel) -->
+        <div id="finalAgrupamentosContainer" style="margin-top:10px; display:none; width:100%;">
+          <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:8px; display:flex; align-items:center; gap:8px;">
+            📦 Lista Final de Agrupamentos (usados na criação do Excel):
+          </div>
+
+          <div style="border:1px solid var(--border); border-radius:6px; background:var(--card-bg); overflow:hidden;">
+            <table style="width:100%; border-collapse:collapse; font-size:12px;">
+              <thead>
+                <tr style="background:rgba(0,187,85,0.12); text-align:left; color:var(--text);">
+                  <th style="padding:10px 12px; border-bottom:1px solid var(--border);">Agrupamento</th>
+                  <th style="padding:10px 12px; border-bottom:1px solid var(--border);">CNPJ Emitente</th>
+                  <th style="padding:10px 12px; border-bottom:1px solid var(--border);">Produtos Incluídos</th>
+                  <th style="padding:10px 12px; border-bottom:1px solid var(--border); width:70px; text-align:center;">Ação</th>
+                </tr>
+              </thead>
+              <tbody id="finalAgrupamentosTbody">
               </tbody>
             </table>
           </div>
@@ -603,7 +632,8 @@ function attachPlanilhaEvents(){
   const btnLimparXML = document.getElementById('btnLimparXML');
   const selectCNPJ = document.getElementById('selectCNPJ');
   const selectCodigoProduto = document.getElementById('selectCodigoProduto');
-  const btnRegistrarFiltro = document.getElementById('btnRegistrarFiltro');
+  const btnAddProdutoToDraft = document.getElementById('btnAddProdutoToDraft');
+  const btnSaveAgrupamento = document.getElementById('btnSaveAgrupamento');
 
   if(!window.ExcelJS){
     loadScript('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js').catch(console.error);
@@ -615,53 +645,84 @@ function attachPlanilhaEvents(){
     });
   }
 
+  // Mudança de CNPJ: Limpa o rascunho do agrupamento atual
   if(selectCNPJ){
     selectCNPJ.addEventListener('change', () => {
       const newCnpj = selectCNPJ.value;
       if (newCnpj !== window.activeFilterCNPJ) {
         window.activeFilterCNPJ = newCnpj;
-        window.activeFilterProducts = [];
-        renderRegisteredFilterList();
+        window.currentDraftProducts = [];
+        renderDraftList();
       }
       updateProdutoCombobox(window.currentPlanilhaData || [], newCnpj);
     });
   }
 
-  if(btnRegistrarFiltro){
-    btnRegistrarFiltro.addEventListener('click', () => {
+  // Botão: Adicionar Produto ao Agrupamento Atual (Draft)
+  if(btnAddProdutoToDraft){
+    btnAddProdutoToDraft.addEventListener('click', () => {
       const cnpj = selectCNPJ ? selectCNPJ.value : '';
       const codigo = selectCodigoProduto ? selectCodigoProduto.value : '';
 
       if(!cnpj){
-        alert('Por favor, selecione um CNPJ Emitente antes de registrar.');
+        alert('Por favor, selecione um CNPJ Emitente antes de adicionar produtos.');
         return;
       }
       if(!codigo){
-        alert('Por favor, selecione um Código de Produto para registrar.');
+        alert('Por favor, selecione um Código de Produto para adicionar.');
         return;
       }
 
-      if(!window.activeFilterProducts) window.activeFilterProducts = [];
+      if(!window.currentDraftProducts) window.currentDraftProducts = [];
 
-      // Verificar se produto já foi registrado
-      const exists = window.activeFilterProducts.some(p => p.codigo === codigo);
+      const exists = window.currentDraftProducts.some(p => p.codigo === codigo);
       if(exists){
-        alert('Este código de produto já está registrado na lista.');
+        alert('Este produto já foi adicionado ao agrupamento atual.');
         return;
       }
 
-      // Buscar descrição do produto nos dados importados
       const allData = window.currentPlanilhaData || [];
       const item = allData.find(d => d.CNPJ === cnpj && d.Codigo === codigo);
       const desc = item ? item.Descricao : (selectCodigoProduto.options[selectCodigoProduto.selectedIndex]?.text.split(' - ').slice(1).join(' - ') || '');
 
       window.activeFilterCNPJ = cnpj;
-      window.activeFilterProducts.push({
+      window.currentDraftProducts.push({
         codigo: codigo,
         descricao: desc
       });
 
-      renderRegisteredFilterList();
+      renderDraftList();
+    });
+  }
+
+  // Botão: Salvar Agrupamento na Lista Final
+  if(btnSaveAgrupamento){
+    btnSaveAgrupamento.addEventListener('click', () => {
+      const draftProducts = window.currentDraftProducts || [];
+      const cnpj = window.activeFilterCNPJ || (selectCNPJ ? selectCNPJ.value : '');
+
+      if(draftProducts.length === 0){
+        alert('Adicione pelo menos 1 produto ao agrupamento antes de salvar.');
+        return;
+      }
+
+      if(!window.finalAgrupamentosList) window.finalAgrupamentosList = [];
+
+      const count = window.finalAgrupamentosList.length + 1;
+      const cnpjText = selectCNPJ && selectCNPJ.options[selectCNPJ.selectedIndex] ? selectCNPJ.options[selectCNPJ.selectedIndex].text : cnpj;
+
+      window.finalAgrupamentosList.push({
+        id: Date.now(),
+        nome: `Agrupamento ${count}`,
+        cnpj: cnpj,
+        cnpjLabel: cnpjText,
+        produtos: [...draftProducts]
+      });
+
+      // Resetar Rascunho
+      window.currentDraftProducts = [];
+      renderDraftList();
+      renderFinalAgrupamentosList();
     });
   }
 
@@ -669,12 +730,14 @@ function attachPlanilhaEvents(){
     btnLimparXML.addEventListener('click', () => {
       window.currentPlanilhaData = [];
       window.activeFilterCNPJ = '';
-      window.activeFilterProducts = [];
+      window.currentDraftProducts = [];
+      window.finalAgrupamentosList = [];
       if(xmlInput) xmlInput.value = '';
       if(previewArea) previewArea.innerHTML = '<div style="text-align:center; color:#888; margin-top:20px;">Dados Detalhados</div>';
       if(previewAreaSummary) previewAreaSummary.innerHTML = '<div style="text-align:center; color:#888; margin-top:20px;">Resumo por CNPJ e Produto</div>';
       updateCNPJCombobox([]);
-      renderRegisteredFilterList();
+      renderDraftList();
+      renderFinalAgrupamentosList();
       alert('Dados limpos com sucesso.');
     });
   }
@@ -1505,14 +1568,14 @@ function updateProdutoCombobox(data, selectedCNPJ) {
   }
 }
 
-function renderRegisteredFilterList() {
-  const container = document.getElementById('registeredFilterContainer');
-  const tbody = document.getElementById('registeredFilterTbody');
-  const badge = document.getElementById('registeredCNPJBadge');
+function renderDraftList() {
+  const container = document.getElementById('draftGroupContainer');
+  const tbody = document.getElementById('draftFilterTbody');
+  const badge = document.getElementById('draftCNPJBadge');
 
   if (!container || !tbody) return;
 
-  const products = window.activeFilterProducts || [];
+  const products = window.currentDraftProducts || [];
   const cnpj = window.activeFilterCNPJ || '';
 
   if (products.length === 0 || !cnpj) {
@@ -1533,16 +1596,53 @@ function renderRegisteredFilterList() {
       <td style="padding:7px 12px; border-bottom:1px solid var(--border); color:var(--text);"><strong>${p.codigo}</strong></td>
       <td style="padding:7px 12px; border-bottom:1px solid var(--border); color:var(--text);">${p.descricao || '-'}</td>
       <td style="padding:7px 12px; border-bottom:1px solid var(--border); text-align:center;">
-        <button onclick="removeRegisteredFilterItem(${idx})" style="background:transparent; border:none; cursor:pointer; font-size:14px; padding:2px 6px; border-radius:4px; transition:background 0.2s;" title="Remover produto da lista" onmouseover="this.style.background='rgba(239,68,68,0.15)'" onmouseout="this.style.background='transparent'">❌</button>
+        <button onclick="removeDraftItem(${idx})" style="background:transparent; border:none; cursor:pointer; font-size:14px; padding:2px 6px; border-radius:4px; transition:background 0.2s;" title="Remover produto do rascunho" onmouseover="this.style.background='rgba(239,68,68,0.15)'" onmouseout="this.style.background='transparent'">❌</button>
       </td>
     </tr>
   `).join('');
 }
 
-function removeRegisteredFilterItem(index) {
-  if (window.activeFilterProducts && window.activeFilterProducts[index]) {
-    window.activeFilterProducts.splice(index, 1);
-    renderRegisteredFilterList();
+function removeDraftItem(index) {
+  if (window.currentDraftProducts && window.currentDraftProducts[index]) {
+    window.currentDraftProducts.splice(index, 1);
+    renderDraftList();
+  }
+}
+
+function renderFinalAgrupamentosList() {
+  const container = document.getElementById('finalAgrupamentosContainer');
+  const tbody = document.getElementById('finalAgrupamentosTbody');
+
+  if (!container || !tbody) return;
+
+  const groups = window.finalAgrupamentosList || [];
+
+  if (groups.length === 0) {
+    container.style.display = 'none';
+    tbody.innerHTML = '';
+    return;
+  }
+
+  container.style.display = 'block';
+  tbody.innerHTML = groups.map((g, idx) => {
+    const prodBadges = g.produtos.map(p => `<span style="display:inline-block; margin:2px; padding:2px 8px; border-radius:4px; background:rgba(255,255,255,0.08); font-size:11px;"><strong>${p.codigo}</strong> - ${p.descricao}</span>`).join('');
+    return `
+      <tr>
+        <td style="padding:10px 12px; border-bottom:1px solid var(--border); color:var(--text);"><strong>${g.nome}</strong></td>
+        <td style="padding:10px 12px; border-bottom:1px solid var(--border); color:var(--text); font-size:11px;">${g.cnpjLabel || g.cnpj}</td>
+        <td style="padding:10px 12px; border-bottom:1px solid var(--border); color:var(--text);">${prodBadges}</td>
+        <td style="padding:10px 12px; border-bottom:1px solid var(--border); text-align:center;">
+          <button onclick="removeFinalAgrupamentoItem(${idx})" style="background:transparent; border:none; cursor:pointer; font-size:14px; padding:2px 6px; border-radius:4px; transition:background 0.2s;" title="Remover agrupamento" onmouseover="this.style.background='rgba(239,68,68,0.15)'" onmouseout="this.style.background='transparent'">❌</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function removeFinalAgrupamentoItem(index) {
+  if (window.finalAgrupamentosList && window.finalAgrupamentosList[index]) {
+    window.finalAgrupamentosList.splice(index, 1);
+    renderFinalAgrupamentosList();
   }
 }
 
