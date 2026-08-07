@@ -534,11 +534,13 @@ function renderPlanilha(){
         </div>
       </div>
 
-      <!-- Opções de Seleção: CNPJ, Código do Produto e Agrupamentos -->
+      <!-- ÁREA 1: Montar Agrupamento de Produtos -->
       <div class="row" id="opcoesPlanilhaArea" style="margin-top:20px; flex-direction:column; gap:16px; padding:18px; border:1px solid var(--border); border-radius:8px; background:rgba(255,255,255,0.02);">
-        <h4 style="margin:0 0 4px 0; color:var(--text); font-size:14px; font-weight:600;">Opções de Filtragem e Agrupamento do Excel</h4>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h4 style="margin:0; color:var(--text); font-size:14px; font-weight:600;">🛠️ 1. Montar Agrupamento de Produtos</h4>
+          <span id="draftCNPJBadge" style="font-size:12px; padding:3px 10px; border-radius:12px; background:rgba(10,132,255,0.15); color:#0a84ff; font-weight:600; display:none;"></span>
+        </div>
         
-        <!-- 1. Seleção de CNPJ e Produto -->
         <div style="display:flex; gap:16px; flex-wrap:wrap; width:100%; align-items:flex-end;">
           <div class="field" style="flex:1; min-width:220px;">
             <label for="selectCNPJ" style="font-weight:600; font-size:13px; color:var(--text);">CNPJ Emitente:</label>
@@ -561,13 +563,9 @@ function renderPlanilha(){
           </div>
         </div>
 
-        <!-- LISTA 1: Monte o Agrupamento (Rascunho de Produtos) -->
-        <div id="draftGroupContainer" style="margin-top:4px; display:none; width:100%; padding:14px; border:1px dashed #0a84ff; border-radius:6px; background:rgba(10,132,255,0.03);">
-          <div style="font-size:13px; font-weight:600; color:var(--text); margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-            <span>📋 Monte o Agrupamento (Produtos Selecionados):</span>
-            <span id="draftCNPJBadge" style="font-size:12px; padding:3px 10px; border-radius:12px; background:rgba(10,132,255,0.15); color:#0a84ff; font-weight:600;"></span>
-          </div>
-          
+        <!-- Tabela do Agrupamento Atual (Rascunho) -->
+        <div id="draftGroupContainer" style="width:100%;">
+          <div style="font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px;">Produtos do Agrupamento Atual:</div>
           <div style="border:1px solid var(--border); border-radius:6px; background:var(--card-bg); overflow:hidden; margin-bottom:12px;">
             <table style="width:100%; border-collapse:collapse; font-size:12px;">
               <thead>
@@ -578,37 +576,37 @@ function renderPlanilha(){
                 </tr>
               </thead>
               <tbody id="draftFilterTbody">
+                <tr><td colspan="3" style="padding:12px; text-align:center; color:#888;">Nenhum produto adicionado a este agrupamento ainda. Selecione o CNPJ e Produto acima e clique em '➕ Adicionar Produto'.</td></tr>
               </tbody>
             </table>
           </div>
 
           <div style="display:flex; justify-content:flex-end;">
-            <button id="btnSaveAgrupamento" class="nav-btn active" style="margin:0; width:auto; padding:8px 20px; font-weight:bold; background:#0a84ff; display:inline-flex; align-items:center; gap:6px;">
-              📥 Salvar Agrupamento na Lista Final
+            <button id="btnSaveAgrupamento" class="nav-btn active" style="margin:0; width:auto; padding:10px 22px; font-weight:bold; background:#0a84ff; display:inline-flex; align-items:center; gap:6px; opacity:0.6; cursor:not-allowed;">
+              📥 Registrar Agrupamento
             </button>
           </div>
         </div>
+      </div>
 
-        <!-- LISTA 2: Lista Final de Agrupamentos Registrados (usados na criação do Excel) -->
-        <div id="finalAgrupamentosContainer" style="margin-top:10px; display:none; width:100%;">
-          <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:8px; display:flex; align-items:center; gap:8px;">
-            📦 Lista Final de Agrupamentos (usados na criação do Excel):
-          </div>
+      <!-- ÁREA 2: Lista Final de Agrupamentos (para a criação do Excel) -->
+      <div class="row" id="finalAgrupamentosArea" style="margin-top:20px; flex-direction:column; gap:14px; padding:18px; border:1px solid var(--border); border-radius:8px; background:rgba(255,255,255,0.02);">
+        <h4 style="margin:0; color:var(--text); font-size:14px; font-weight:600;">📦 2. Lista Final de Agrupamentos Registrados (para o Excel)</h4>
 
-          <div style="border:1px solid var(--border); border-radius:6px; background:var(--card-bg); overflow:hidden;">
-            <table style="width:100%; border-collapse:collapse; font-size:12px;">
-              <thead>
-                <tr style="background:rgba(0,187,85,0.12); text-align:left; color:var(--text);">
-                  <th style="padding:10px 12px; border-bottom:1px solid var(--border);">Agrupamento</th>
-                  <th style="padding:10px 12px; border-bottom:1px solid var(--border);">CNPJ Emitente</th>
-                  <th style="padding:10px 12px; border-bottom:1px solid var(--border);">Produtos Incluídos</th>
-                  <th style="padding:10px 12px; border-bottom:1px solid var(--border); width:70px; text-align:center;">Ação</th>
-                </tr>
-              </thead>
-              <tbody id="finalAgrupamentosTbody">
-              </tbody>
-            </table>
-          </div>
+        <div style="border:1px solid var(--border); border-radius:6px; background:var(--card-bg); overflow:hidden;">
+          <table style="width:100%; border-collapse:collapse; font-size:12px;">
+            <thead>
+              <tr style="background:rgba(0,187,85,0.12); text-align:left; color:var(--text);">
+                <th style="padding:10px 12px; border-bottom:1px solid var(--border);">Agrupamento</th>
+                <th style="padding:10px 12px; border-bottom:1px solid var(--border);">CNPJ Emitente</th>
+                <th style="padding:10px 12px; border-bottom:1px solid var(--border);">Produtos Incluídos</th>
+                <th style="padding:10px 12px; border-bottom:1px solid var(--border); width:70px; text-align:center;">Ação</th>
+              </tr>
+            </thead>
+            <tbody id="finalAgrupamentosTbody">
+              <tr><td colspan="4" style="padding:16px; text-align:center; color:#888;">Nenhum agrupamento registrado na lista final. Monte o agrupamento na caixa acima e clique em 'Registrar Agrupamento'.</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -1569,28 +1567,42 @@ function updateProdutoCombobox(data, selectedCNPJ) {
 }
 
 function renderDraftList() {
-  const container = document.getElementById('draftGroupContainer');
   const tbody = document.getElementById('draftFilterTbody');
   const badge = document.getElementById('draftCNPJBadge');
+  const btnSave = document.getElementById('btnSaveAgrupamento');
 
-  if (!container || !tbody) return;
+  if (!tbody) return;
 
   const products = window.currentDraftProducts || [];
   const cnpj = window.activeFilterCNPJ || '';
 
-  if (products.length === 0 || !cnpj) {
-    container.style.display = 'none';
-    tbody.innerHTML = '';
+  if (badge) {
+    if (cnpj) {
+      let cnpjFmt = cnpj;
+      if (cnpj.length === 14) {
+        cnpjFmt = cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+      }
+      badge.innerText = `CNPJ Ativo: ${cnpjFmt}`;
+      badge.style.display = 'inline-block';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
+  if (products.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="3" style="padding:12px; text-align:center; color:#888;">Nenhum produto adicionado a este agrupamento ainda. Selecione o CNPJ e Produto acima e clique em '➕ Adicionar Produto'.</td></tr>`;
+    if (btnSave) {
+      btnSave.style.opacity = '0.6';
+      btnSave.style.cursor = 'not-allowed';
+    }
     return;
   }
 
-  let cnpjFmt = cnpj;
-  if (cnpj.length === 14) {
-    cnpjFmt = cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+  if (btnSave) {
+    btnSave.style.opacity = '1';
+    btnSave.style.cursor = 'pointer';
   }
-  if (badge) badge.innerText = `CNPJ: ${cnpjFmt}`;
 
-  container.style.display = 'block';
   tbody.innerHTML = products.map((p, idx) => `
     <tr>
       <td style="padding:7px 12px; border-bottom:1px solid var(--border); color:var(--text);"><strong>${p.codigo}</strong></td>
@@ -1610,22 +1622,18 @@ function removeDraftItem(index) {
 }
 
 function renderFinalAgrupamentosList() {
-  const container = document.getElementById('finalAgrupamentosContainer');
   const tbody = document.getElementById('finalAgrupamentosTbody');
-
-  if (!container || !tbody) return;
+  if (!tbody) return;
 
   const groups = window.finalAgrupamentosList || [];
 
   if (groups.length === 0) {
-    container.style.display = 'none';
-    tbody.innerHTML = '';
+    tbody.innerHTML = `<tr><td colspan="4" style="padding:16px; text-align:center; color:#888;">Nenhum agrupamento registrado na lista final. Monte o agrupamento na caixa acima e clique em 'Registrar Agrupamento'.</td></tr>`;
     return;
   }
 
-  container.style.display = 'block';
   tbody.innerHTML = groups.map((g, idx) => {
-    const prodBadges = g.produtos.map(p => `<span style="display:inline-block; margin:2px; padding:2px 8px; border-radius:4px; background:rgba(255,255,255,0.08); font-size:11px;"><strong>${p.codigo}</strong> - ${p.descricao}</span>`).join('');
+    const prodBadges = g.produtos.map(p => `<span style="display:inline-block; margin:2px; padding:3px 8px; border-radius:4px; background:rgba(255,255,255,0.08); font-size:11px;"><strong>${p.codigo}</strong> - ${p.descricao}</span>`).join('');
     return `
       <tr>
         <td style="padding:10px 12px; border-bottom:1px solid var(--border); color:var(--text);"><strong>${g.nome}</strong></td>
