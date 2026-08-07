@@ -613,7 +613,105 @@ body{margin:0;color:var(--text);background:var(--bg)}
   color: var(--text);
 }
 
-.admin-checkbox-label input {
+
+/* Estilos para o Conversor PDF -> Excel */
+.pdf-dropzone {
+  border: 2px dashed var(--btn-active-bg);
+  border-radius: 12px;
+  padding: 40px 20px;
+  text-align: center;
+  background: rgba(10, 132, 255, 0.03);
   cursor: pointer;
+  transition: all 0.25s ease-in-out;
+  margin-bottom: 20px;
+  position: relative;
 }
+
+.pdf-dropzone:hover, .pdf-dropzone.dragover {
+  background: rgba(10, 132, 255, 0.08);
+  border-color: #0b5;
+  transform: translateY(-2px);
+}
+
+.pdf-dropzone-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  display: inline-block;
+  animation: pulseIcon 2s infinite ease-in-out;
+}
+
+@keyframes pulseIcon {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+
+.pdf-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.pdf-kpi-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.pdf-kpi-title {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pdf-kpi-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.pdf-preview-table-container {
+  max-height: 450px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-top: 16px;
+}
+
+.pdf-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.pdf-preview-table th {
+  position: sticky;
+  top: 0;
+  background: var(--sidebar-bg);
+  color: var(--text);
+  font-weight: 600;
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 2px solid var(--border);
+  z-index: 2;
+}
+
+.pdf-preview-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.pdf-preview-table tr:hover {
+  background: var(--row-highlight-bg);
+}
+
 

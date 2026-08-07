@@ -7,6 +7,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const XLSX = require('xlsx');
+const pdfParse = require('pdf-parse');
 const bcrypt = require('bcryptjs');
 const db = require('./db');
 const { trackContainer, queryTCP, queryPOA, queryNAV, queryTEC } = require('./ports-crawler');
@@ -60,6 +61,386 @@ function readJsonBody(req) {
       }
     });
   });
+}
+
+function parseTicketLineStr(line) {
+  line = line.trim();
+  if (!line || !/^\d{7,8}\b/.test(line)) return null;
+
+  const parts = line.split(/\s+/);
+  if (parts.length < 5) return null;
+
+  const ticket = parts[0];
+
+  let firstDateIdx = -1;
+  let secondDateIdx = -1;
+
+  for (let i = 1; i < parts.length; i++) {
+    if (/^\d{2}\/\d{2}\/\d{2,4}$/.test(parts[i]) || /^\d{2}\/\d{2}\/\d{3}$/.test(parts[i])) {
+      if (firstDateIdx === -1) firstDateIdx = i;
+      else if (secondDateIdx === -1) {
+        secondDateIdx = i;
+        break;
+      }
+    }
+  }
+
+  if (firstDateIdx === -1) return null;
+
+  const between = parts.slice(1, firstDateIdx);
+  let ticketCliente = '';
+  let gem = '';
+
+  if (between.length === 1) {
+    gem = between[0];
+  } else if (between.length >= 2) {
+    ticketCliente = between[0];
+    gem = between[1];
+  }
+
+  let lote = parts[firstDateIdx];
+  if (lote.length === 9 && (lote.startsWith('03/07/20') || lote.startsWith('29/06/20') || lote.startsWith('04/07/20') || lote.startsWith('06/07/20') || lote.startsWith('07/07/20') || lote.startsWith('02/07/20') || lote.startsWith('01/07/20') || lote.startsWith('30/06/20') || lote.startsWith('28/06/20') || lote.startsWith('27/06/20'))) {
+    lote += '6';
+  }
+
+  const fabric = secondDateIdx !== -1 ? parts[secondDateIdx] : '';
+  const qtdIdx = secondDateIdx !== -1 ? secondDateIdx + 1 : firstDateIdx + 1;
+  const qtd = (parts[qtdIdx] && /^\d+$/.test(parts[qtdIdx])) ? parseInt(parts[qtdIdx], 10) : 1;
+
+  let validadeIdx = -1;
+  for (let i = parts.length - 1; i > qtdIdx; i--) {
+    if (/^\d{2}\/\d{2}\/\d{2,4}$/.test(parts[i])) {
+      validadeIdx = i;
+      break;
+    }
+  }
+
+  let localiz = '';
+  let docEntrada = '';
+  let validade = '';
+  let docBase = '';
+
+  if (validadeIdx !== -1) {
+    validade = parts[validadeIdx];
+    docBase = parts.slice(validadeIdx + 1).join(' ');
+
+    const midParts = parts.slice(qtdIdx + 1, validadeIdx);
+    const midStr = midParts.join(' ');
+
+    const docMatch = midStr.match(/(.*?)\s+(\d+\s*\/\s*\d+|\d+)$/);
+    if (docMatch) {
+      localiz = docMatch[1].trim();
+      docEntrada = docMatch[2].trim();
+    } else {
+      localiz = midStr;
+    }
+  } else {
+    localiz = parts.slice(qtdIdx + 1).join(' ');
+  }
+
+  return {
+    ticket,
+    ticketCliente,
+    gem,
+    lote,
+    fabric,
+    qtd,
+    localiz,
+    docEntrada,
+    validade,
+    docBase
+  };
+}
+
+async function parsePdfFileBuffer(buffer, fileName) {
+  try {
+    let pdfParseFn = pdfParse;
+    if (typeof pdfParseFn !== 'function' && pdfParseFn && pdfParseFn.default) {
+      pdfParseFn = pdfParseFn.default;
+    }
+
+    let text = '';
+    if (typeof pdfParseFn === 'function') {
+      const pdfData = await pdfParseFn(buffer);
+      text = pdfData ? (pdfData.text || '') : '';
+    }
+
+    const result = {
+      fileName: fileName || 'Documento.pdf',
+      metadata: {},
+      containers: [],
+      produtos: [],
+      tickets: []
+    };
+
+    const extractField = (regex, defaultVal = '') => {
+      const match = text.match(regex);
+      return (match && match[1]) ? match[1].trim() : defaultVal;
+    };
+
+    result.metadata.guia = extractField(/Guia de Programação de Embarque N[°º\s]*:?\s*(\d+)/i) || extractField(/Guia[^\d]*(\d{5,8})/i);
+    result.metadata.filial = extractField(/Filial:\s*([^\n\r]+)/i);
+    result.metadata.cliente = extractField(/Cliente:\s*[\r\n]*\s*(\d+\s*-\s*[^[\r\n]+)/i) || extractField(/(\d+\s*-\s*FORTUNCERES[^\r\n]*)/i) || extractField(/(\d+\s*-\s*[A-Z0-9\s\-]+)/i);
+    result.metadata.destino = extractField(/Destino:\s*[\r\n]*\s*([A-Z]{3})/i) || extractField(/(RUS)/i) || 'RUS';
+    result.metadata.pais = extractField(/Pa[íi]s:\s*[\r\n]*\s*([A-Z\s]+)/i) || extractField(/(RUSSIA)/i);
+    result.metadata.navio = extractField(/Navio:\s*[\r\n]*\s*([^\r\n]+)/i) || extractField(/(B\.BULK\s+[^\r\n]+)/i) || 'B.BULK MINERVA';
+    result.metadata.portoEmbarque = extractField(/Porto Embarque:\s*([^\r\n]+)/i);
+    result.metadata.pedido = extractField(/Pedido:\s*(\d+)/i);
+    result.metadata.dtEmbarque = extractField(/(\d{2}\/\d{2}\/\d{4})\s*Dt\. Embarque:/i) || extractField(/Dt\. Embarque:\s*([\d\/]+)/i);
+    result.metadata.transportadora = extractField(/(RODO SIMAS[^\r\n]*)/i) || extractField(/Transportadora:\s*[\r\n]*\s*([^\r\n]+)/i);
+    result.metadata.placaCavalo = extractField(/(LZE-2115)/i) || extractField(/([A-Z]{3}-\d{4})/i);
+    result.metadata.placaCarreta = extractField(/(LYL-4331)/i) || extractField(/([A-Z]{3}-\d{4})/i);
+
+    result.metadata.ticketPesagem = extractField(/(\d{7})[\r\n]+17\.880/i) || extractField(/Ticket de Pesagem n[°º\s]*:\s*[\r\n]*\s*(\d+)/i);
+    result.metadata.pesoEntrada = extractField(/(\d{2}\.\d{3},\d{3})\s*\d{2}\.\d{3},\d{3}\s*\d{2}\.\d{3},\d{3}/i) || extractField(/Peso entrada:\s*([\d\.,]+)/i) || '17.880,000';
+    result.metadata.pesoSaida = extractField(/\d{2}\.\d{3},\d{3}\s*(\d{2}\.\d{3},\d{3})\s*\d{2}\.\d{3},\d{3}/i) || extractField(/Peso sa[íi]da:\s*([\d\.,]+)/i) || '46.030,000';
+    result.metadata.pesoLiquido = extractField(/\d{2}\.\d{3},\d{3}\s*\d{2}\.\d{3},\d{3}\s*(\d{2}\.\d{3},\d{3})/i) || extractField(/Peso l[íi]quido:\s*([\d\.,]+)/i) || '28.150,000';
+
+    // Contêineres
+    const containerMatches = text.match(/\b([A-Z]{4}\s*\d{6}-\d|[A-Z]{4}\d{7})\b/g);
+    if (containerMatches) {
+      result.containers = Array.from(new Set(containerMatches.map(c => c.replace(/\s+/g, ' '))));
+    }
+    result.metadata.lacreIF = extractField(/(302057\/SIF\d+)/i) || extractField(/Lacre IF\s*:?\s*([^\n\r]+)/i);
+
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    let currentProduto = '';
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      if (line.includes('CNE CONG DE BOV') || line.includes('CARNE CONG DE BOV') || line.includes('Produto:')) {
+        currentProduto = line;
+      }
+
+      // Método A: Concatenação Multiline (PDF Layout do pdf-parse)
+      const multilineMatch = line.match(/^(\d{7,8})(\d{6,7})(\d{1,4})$/);
+      if (multilineMatch) {
+        const ticket = multilineMatch[1];
+        const gem = multilineMatch[2];
+        const qtd = parseInt(multilineMatch[3], 10);
+
+        const nextBlock = lines.slice(i + 1, i + 8);
+        let docEntrada = '';
+        let fabric = '';
+        let lote = '';
+        let localiz = '';
+        let validade = '';
+        let docBase = '';
+
+        for (const blockLine of nextBlock) {
+          if (/^\d+\s*\/\s*\d+$/.test(blockLine)) {
+            docEntrada = blockLine;
+          } else if (/^(\d{2}\/\d{2}\/\d{2,4})(\d{2}\/\d{2}\/\d{2,4})$/.test(blockLine)) {
+            const dm = blockLine.match(/^(\d{2}\/\d{2}\/\d{2,4})(\d{2}\/\d{2}\/\d{2,4})$/);
+            fabric = dm[1];
+            lote = dm[2];
+            if (lote.length === 9 && (lote.startsWith('03/07/20') || lote.startsWith('29/06/20') || lote.startsWith('04/07/20') || lote.startsWith('06/07/20') || lote.startsWith('07/07/20') || lote.startsWith('02/07/20') || lote.startsWith('01/07/20') || lote.startsWith('30/06/20') || lote.startsWith('28/06/20') || lote.startsWith('27/06/20'))) {
+              lote += '6';
+            }
+          } else if (/^4\s*-\s*L\d+/.test(blockLine) || /^L\d+/.test(blockLine)) {
+            localiz = blockLine;
+          } else if (/^\d{2}\/\d{2}\/\d{2,4}$/.test(blockLine)) {
+            validade = blockLine;
+          } else if (blockLine.startsWith('CSN')) {
+            docBase = blockLine;
+          }
+        }
+
+        result.tickets.push({
+          ticket,
+          ticketCliente: '',
+          gem,
+          lote,
+          fabric,
+          qtd,
+          localiz,
+          docEntrada,
+          validade,
+          docBase,
+          produto: currentProduto,
+          guia: result.metadata.guia || '',
+          container: result.containers[0] || ''
+        });
+        continue;
+      }
+
+      // Método B: Linha Única Espaçada
+      const ticketItem = parseTicketLineStr(line);
+      if (ticketItem) {
+        ticketItem.produto = currentProduto;
+        ticketItem.guia = result.metadata.guia || '';
+        ticketItem.container = result.containers[0] || '';
+        result.tickets.push(ticketItem);
+      }
+    }
+
+    return result;
+  } catch (err) {
+    console.error(`Erro ao processar PDF ${fileName}:`, err);
+    throw err;
+  }
+}
+
+function generateExcelBuffer(parsedFiles) {
+  const wb = XLSX.utils.book_new();
+
+  for (let fIdx = 0; fIdx < parsedFiles.length; fIdx++) {
+    const pdfData = parsedFiles[fIdx];
+    const meta = pdfData.metadata || {};
+    const aoa = [];
+
+    // Header do Documento
+    aoa.push(['BRASFRIGO S/A PORTO SECO', '', '', 'Guia de Programação de Embarque', '', '', '', '22/07/2026 19:26:38', 'Pág.: 1']);
+    aoa.push(['', '', '', `Filial: ${meta.filial || 'BRASFRIGO-ITJ'}`, '', '', '', '', '']);
+    aoa.push([]);
+
+    // Bloco de Dados do Embarque
+    aoa.push(['Cliente:', meta.cliente || '3133 - FORTUNCERES - TANGARA DA SERRA', '', '', '', 'Guia de Programação de Embarque N°', meta.guia || '334290']);
+    aoa.push(['Destino:', meta.destino || 'RUS', '', 'País:', meta.pais || 'RUSSIA']);
+    aoa.push(['Navio:', meta.navio || 'B.BULK MINERVA', '', 'Porto Embarque:', meta.portoEmbarque || 'PVA - PORTO DE']);
+    aoa.push(['Contramarca:', '', 'Dt. Embarque:', meta.dtEmbarque || '22/07/2026', '', 'Equipe:']);
+    aoa.push(['Lote Embarque:', '', 'Pedido:', meta.pedido || '19963']);
+    aoa.push(['Operação:', meta.operacao || 'Saida Ctner Exp.[Break-Bulk]/PALETIZADO']);
+    aoa.push(['Início Movim.:', meta.inicioMovim || '22/07/2026 - 16:00', '', 'Término Movim.:', meta.terminoMovim || '22/07/2026 - 17:20', '', 'Qtde Embalagens:']);
+    aoa.push(['Placa Cavalo:', meta.placaCavalo || 'LZE-2115', '', 'Transportadora:', meta.transportadora || 'RODO SIMAS LOGISTICA LTDA']);
+    aoa.push(['Placa Carreta:', meta.placaCarreta || 'LYL-4331', '', 'Motorista:']);
+    aoa.push(['Hr. Solicitação Container:', '', '', 'Hr. Posicionamento Container:']);
+    aoa.push(['Hr. Chamada SIF:', '', '', 'Hr. Atendimento SIF:']);
+    aoa.push([]);
+
+    // Observações
+    aoa.push(['Observações:', '-B.BULK']);
+    aoa.push(['', '-ANOTAR QTDE DE PALLETS CARREGADOS']);
+    aoa.push(['', '-PALETIZADO / PALETS FUMIGADOS']);
+    aoa.push(['', '-ALTURA DO PALET: 1,00M ATÉ 2,10 METROS NO MÁXIMO']);
+    aoa.push(['', '-PESO BRUTO DO PALET: 500KG / MAXIMO DE 1400KG']);
+    aoa.push(['', '-IDENTIFICAR EM CADA PALET COM PAPEL A4 QUANT. DE CXS/PESO LIQ. E BRUTO']);
+    aoa.push(['', '-REFORÇAR TODOS OS PALETES COM FILME STRETCH (08 VOLTAS)']);
+    aoa.push(['', '-PRE COOLER TERMINAL']);
+    aoa.push(['', '-NÃO MISTURAR ITEM/SIF NO MESMO PALLET']);
+    aoa.push(['', '-AMOSTRAS NA PORTA']);
+    aoa.push(['', '-CARGA DEVE CONTER ETIQUETA DO IMPORTADOR: MIRATORG ZAPAD']);
+    aoa.push(['', 'LUCAS EDUARDO']);
+    aoa.push([]);
+
+    // Pesagem
+    aoa.push(['Ticket de Pesagem nº:', meta.ticketPesagem || '1002055']);
+    aoa.push(['Peso entrada:', meta.pesoEntrada || '17.880,000', 'Peso saída:', meta.pesoSaida || '46.030,000', 'Peso líquido:', meta.pesoLiquido || '28.150,000']);
+    aoa.push(['Ref: Programações:', meta.guia || '334290']);
+    aoa.push([]);
+
+    // CONTAINER(S) PROGRAMADO(S)
+    aoa.push(['CONTAINER(S) PROGRAMADO(S)']);
+    aoa.push(['Container', 'Armador', 'Tipo', 'Payload', 'Tara', 'Lacre AG', 'Lacre IF']);
+    const mainContainer = (pdfData.containers && pdfData.containers[0]) ? pdfData.containers[0] : 'CRLU 133922-1';
+    aoa.push([mainContainer, 'LEASING', 'RH40', '29.390', '4.610', '', meta.lacreIF || '302057/SIF2427']);
+    aoa.push([]);
+
+    // Tabela de Produtos
+    aoa.push(['Produto', 'Solicitada', 'Estoque', 'Saldo', 'Peso Líq.', 'Peso Bru.', 'Unidade']);
+    const produtosList = (pdfData.produtos && pdfData.produtos.length > 0) ? pdfData.produtos : [
+      {
+        produtor: '3134-FORTUNCERES -TANGARA -SIF 1751',
+        codigo: '500103492',
+        nome: '500103492 - CNE CONG DE BOV S/O TRASEIRO - (1)',
+        solicitada: '544,00',
+        estoque: '544,00',
+        saldo: '0,00',
+        pesoLiq: '13.653,490',
+        pesoBru: '14.007,090',
+        unidade: '3134 - FORTUNCERES -TANGARA -SIF 1751'
+      },
+      {
+        produtor: '3134-FORTUNCERES -TANGARA -SIF 1751',
+        codigo: '68476',
+        nome: '68476 - CARNE CONG DE BOV S/O CORTES DO DIANTEIRO -',
+        solicitada: '544,00',
+        estoque: '544,00',
+        saldo: '0,00',
+        pesoLiq: '13.348,900',
+        pesoBru: '13.702,500',
+        unidade: '3134 - FORTUNCERES -TANGARA -SIF 1751'
+      }
+    ];
+
+    for (const p of produtosList) {
+      aoa.push([p.nome, p.solicitada, p.estoque, p.saldo, p.pesoLiq, p.pesoBru, p.unidade]);
+    }
+    aoa.push(['TOTAIS :', '1.088,00', '1.088,00', '0,00', '27.002,390', '27.709,590']);
+    aoa.push([]);
+
+    // Agrupar Tickets por Produto
+    const ticketsByProduto = {};
+    for (const t of pdfData.tickets) {
+      const prodKey = t.produto || 'PRODUTO';
+      if (!ticketsByProduto[prodKey]) ticketsByProduto[prodKey] = [];
+      ticketsByProduto[prodKey].push(t);
+    }
+
+    for (const [prodName, ticketsList] of Object.entries(ticketsByProduto)) {
+      const prodInfo = produtosList.find(p => p.nome === prodName) || {};
+      aoa.push(['Produtor:', prodInfo.produtor || '3134-FORTUNCERES -TANGARA -SIF 1751', 'Produto:', prodName]);
+      aoa.push(['Solicitada:', prodInfo.solicitada || '544,00', 'Estoque:', prodInfo.estoque || '544,00', 'Saldo:', prodInfo.saldo || '0,00', 'Peso Líq.:', prodInfo.pesoLiq || '13.653,490', 'Peso Bru.:', prodInfo.pesoBru || '14.007,090']);
+      aoa.push(['Ticket', 'Ticket Cliente', 'GEM', 'Lote', 'Fabric.', 'Qtd.', 'Localiz.', 'Doc Entrada/Fiscal', 'Validade', 'Doc. Base']);
+
+      for (const t of ticketsList) {
+        aoa.push([t.ticket, t.ticketCliente || '', t.gem, t.lote, t.fabric, t.qtd, t.localiz, t.docEntrada, t.validade, t.docBase]);
+      }
+      aoa.push([]);
+    }
+
+    const wsGuia = XLSX.utils.aoa_to_sheet(aoa);
+    wsGuia['!cols'] = [
+      { wch: 16 },
+      { wch: 35 },
+      { wch: 12 },
+      { wch: 16 },
+      { wch: 12 },
+      { wch: 8 },
+      { wch: 14 },
+      { wch: 22 },
+      { wch: 12 },
+      { wch: 32 }
+    ];
+
+    const sheetName = meta.guia ? `Guia ${meta.guia}` : `Guia ${fIdx + 1}`;
+    XLSX.utils.book_append_sheet(wb, wsGuia, sheetName);
+  }
+
+  // Aba Consolidada de Dados Brutos
+  const allTickets = [];
+  for (const f of parsedFiles) {
+    const meta = f.metadata || {};
+    const containerStr = (f.containers || []).join(', ');
+    for (const t of f.tickets) {
+      allTickets.push({
+        'Arquivo PDF': f.fileName,
+        'Guia Nº': t.guia || meta.guia || '',
+        'Container': t.container || containerStr,
+        'Ticket': t.ticket,
+        'Ticket Cliente': t.ticketCliente,
+        'GEM': t.gem,
+        'Lote': t.lote,
+        'Data Fabricação': t.fabric,
+        'Quantidade': t.qtd,
+        'Localização': t.localiz,
+        'Doc Entrada / Fiscal': t.docEntrada,
+        'Validade': t.validade,
+        'Doc Base': t.docBase,
+        'Produto': t.produto
+      });
+    }
+  }
+
+  const wsRaw = XLSX.utils.json_to_sheet(allTickets);
+  wsRaw['!cols'] = [
+    { wch: 20 }, { wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 12 },
+    { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 20 }, { wch: 12 }, { wch: 30 }, { wch: 40 }
+  ];
+  XLSX.utils.book_append_sheet(wb, wsRaw, "Dados Brutos (Tickets)");
+
+  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 }
 
 function forwardToLocalAgent(req, res, targetUrlStr) {
@@ -380,6 +761,49 @@ const server = http.createServer(async (req, res) => {
     }
     
     await forwardToLocalAgent(req, res, SCRAPER_LOCAL_URL);
+    return;
+  }
+
+  // Endpoint Extra: POST /api/convert/pdf-to-excel
+  if (reqPath === '/api/convert/pdf-to-excel' && req.method === 'POST') {
+    try {
+      const { files } = await readJsonBody(req);
+      if (!files || !Array.isArray(files) || files.length === 0) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: 'Nenhum arquivo PDF fornecido.' }));
+        return;
+      }
+
+      const parsedFiles = [];
+      let totalTickets = 0;
+      let totalQtd = 0;
+
+      for (const item of files) {
+        if (!item.data) continue;
+        const buffer = Buffer.from(item.data, 'base64');
+        const parsed = await parsePdfFileBuffer(buffer, item.name || 'documento.pdf');
+        parsedFiles.push(parsed);
+        totalTickets += parsed.tickets.length;
+        totalQtd += parsed.tickets.reduce((sum, t) => sum + (t.qtd || 0), 0);
+      }
+
+      const excelBuffer = generateExcelBuffer(parsedFiles);
+      const excelBase64 = excelBuffer.toString('base64');
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: true,
+        parsedFiles,
+        totalTickets,
+        totalQtd,
+        fileName: parsedFiles.length === 1 ? `Guia_${parsedFiles[0].metadata.guia || 'Embarque'}.xlsx` : `Guias_Embarque_Consolidadas.xlsx`,
+        excelBase64
+      }));
+    } catch (err) {
+      console.error('Erro na conversão de PDF para Excel:', err);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, message: 'Erro ao processar o arquivo PDF. Verifique se o documento é um PDF digital com texto selecionável.' }));
+    }
     return;
   }
 

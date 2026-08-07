@@ -102,6 +102,9 @@ function setupSidebar() {
   // 2. Calculo de Itens (Livre para todos)
   sidebar.innerHTML += `<button class="nav-btn" data-page="teste">Calculo de Itens</button>`;
   
+  // 3. Conversor PDF -> Excel (Livre para todos)
+  sidebar.innerHTML += `<button class="nav-btn" data-page="pdf-excel">Conversor PDF → Excel</button>`;
+  
   // 4. LPL Planilha & Gestão (Somente se can_view_processes for true)
   if (sessionStorage.getItem('lpl_can_view_processes') === 'true') {
     sidebar.innerHTML += `<button class="nav-btn" data-page="planilha">Gerar Planilha</button>`;
@@ -350,6 +353,7 @@ function loadPage(page){
   else if(page === 'green') renderGreenTest();
   else if(page === 'lpl-planilha') renderLplPlanilha();
   else if(page === 'gestao-processos') renderGestaoProcessos();
+  else if(page === 'pdf-excel') renderPdfToExcel();
   else if(page === 'admin') renderAdmin();
   else if(page === 'perfil') renderPerfil();
   else renderTeste();
@@ -3341,6 +3345,326 @@ async function renderPerfil() {
         btnSave.textContent = 'Salvar Alterações';
       }
     });
+  }
+}
+
+function renderPdfToExcel() {
+  contentArea.innerHTML = `
+    <div class="card">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+        <div>
+          <h2 style="margin: 0 0 4px 0; display: flex; align-items: center; gap: 8px;">
+            📄 Conversor PDF → Excel
+          </h2>
+          <p style="margin: 0; color: var(--muted); font-size: 13px;">
+            Selecione ou arraste Guias de Embarque em PDF para extrair tickets, pesagens, contêineres e gerar a planilha Excel.
+          </p>
+        </div>
+      </div>
+
+      <!-- Zona Drag and Drop -->
+      <div id="pdfDropzone" class="pdf-dropzone">
+        <span class="pdf-dropzone-icon">📥</span>
+        <h3 style="margin: 0 0 6px 0; font-size: 16px; color: var(--text);">
+          Arraste e solte seus arquivos PDF aqui
+        </h3>
+        <p style="margin: 0 0 16px 0; font-size: 13px; color: var(--muted);">
+          Suporta 1 ou múltiplos PDFs de Guias de Embarque (Brasfrigo / Portos Secos / Terminais)
+        </p>
+        <label class="nav-btn active" style="display: inline-block; width: auto; padding: 10px 24px; margin: 0; cursor: pointer; font-weight: bold;">
+          🔍 Selecionar PDFs do Computador
+          <input type="file" id="pdfFileInput" accept=".pdf" multiple style="display: none;">
+        </label>
+      </div>
+
+      <!-- Spinner / Status de Processamento -->
+      <div id="pdfLoadingState" style="display: none; padding: 30px; text-align: center;">
+        <div class="spinner" style="margin: 0 auto 16px auto;"></div>
+        <h4 style="margin: 0; color: var(--text);">Processando documentos PDF...</h4>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: var(--muted);" id="pdfLoadingText">Extraindo tabelas, pesagens e tickets...</p>
+      </div>
+
+      <!-- Resultados / Pré-visualização -->
+      <div id="pdfResultsContainer" style="display: none; margin-top: 24px;">
+        <!-- KPI Cards -->
+        <div class="pdf-kpi-grid">
+          <div class="pdf-kpi-card">
+            <span class="pdf-kpi-title">Arquivos PDF Processados</span>
+            <span class="pdf-kpi-value" id="kpiPdfFiles">0</span>
+          </div>
+          <div class="pdf-kpi-card">
+            <span class="pdf-kpi-title">Total de Tickets / Lotes</span>
+            <span class="pdf-kpi-value" id="kpiPdfTickets" style="color: #0b5;">0</span>
+          </div>
+          <div class="pdf-kpi-card">
+            <span class="pdf-kpi-title">Total de Caixas / Qtd</span>
+            <span class="pdf-kpi-value" id="kpiPdfQtd" style="color: #0a84ff;">0</span>
+          </div>
+          <div class="pdf-kpi-card">
+            <span class="pdf-kpi-title">Peso Líquido Total</span>
+            <span class="pdf-kpi-value" id="kpiPdfPeso">0 kg</span>
+          </div>
+        </div>
+
+        <!-- Barra de Ações -->
+        <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 16px;">
+          <input type="text" id="pdfFilterInput" placeholder="🔍 Filtrar tickets (Nº, lote, produto, doc...)" style="flex: 1; min-width: 240px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--text);">
+          
+          <button id="pdfCopyBtn" class="nav-btn" style="margin: 0; width: auto; padding: 10px 20px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px;">
+            📋 Copiar Tabela (Colar no Google Sheets / Excel)
+          </button>
+
+          <button id="pdfDownloadBtn" class="nav-btn active" style="margin: 0; width: auto; padding: 10px 24px; font-weight: bold; background: #0b5; display: inline-flex; align-items: center; gap: 8px;">
+            📊 Baixar Planilha Excel (.xlsx)
+          </button>
+        </div>
+
+        <!-- Tabela de Preview -->
+        <h4 style="margin: 16px 0 8px 0; color: var(--text);">Pré-visualização dos Tickets Extraídos:</h4>
+        <div class="pdf-preview-table-container">
+          <table class="pdf-preview-table">
+            <thead>
+              <tr>
+                <th>Guia Nº</th>
+                <th>Container</th>
+                <th>Ticket</th>
+                <th>GEM</th>
+                <th>Lote</th>
+                <th>Fabricação</th>
+                <th>Qtd</th>
+                <th>Localiz.</th>
+                <th>Doc Entrada / Fiscal</th>
+                <th>Validade</th>
+                <th>Doc Base</th>
+              </tr>
+            </thead>
+            <tbody id="pdfPreviewTableBody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const dropzone = document.getElementById('pdfDropzone');
+  const fileInput = document.getElementById('pdfFileInput');
+  const filterInput = document.getElementById('pdfFilterInput');
+  const downloadBtn = document.getElementById('pdfDownloadBtn');
+
+  if (!dropzone || !fileInput) return;
+
+  ['dragenter', 'dragover'].forEach(eventName => {
+    dropzone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.add('dragover');
+    }, false);
+  });
+
+  ['dragleave', 'drop'].forEach(eventName => {
+    dropzone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.remove('dragover');
+    }, false);
+  });
+
+  dropzone.addEventListener('drop', (e) => {
+    const dt = e.dataTransfer;
+    const files = dt.files;
+    if (files && files.length > 0) {
+      handlePdfFiles(files);
+    }
+  });
+
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handlePdfFiles(e.target.files);
+    }
+  });
+
+  let currentParsedResult = null;
+
+  async function handlePdfFiles(fileList) {
+    const pdfFiles = Array.from(fileList).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+    if (pdfFiles.length === 0) {
+      alert('Por favor, selecione apenas arquivos com extensão .PDF.');
+      return;
+    }
+
+    document.getElementById('pdfLoadingState').style.display = 'block';
+    document.getElementById('pdfResultsContainer').style.display = 'none';
+
+    try {
+      const fileDataArray = [];
+      for (const file of pdfFiles) {
+        document.getElementById('pdfLoadingText').innerText = `Lendo ${file.name}...`;
+        const base64 = await readFileAsBase64(file);
+        fileDataArray.push({
+          name: file.name,
+          data: base64
+        });
+      }
+
+      document.getElementById('pdfLoadingText').innerText = `Convertendo ${fileDataArray.length} PDF(s) para Excel...`;
+
+      const response = await fetch('/api/convert/pdf-to-excel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: fileDataArray })
+      });
+
+      const res = await response.json();
+      document.getElementById('pdfLoadingState').style.display = 'none';
+
+      if (!res.success) {
+        alert(res.message || 'Erro ao processar os arquivos PDF.');
+        return;
+      }
+
+      currentParsedResult = res;
+      renderPdfResults(res);
+
+    } catch (err) {
+      console.error('Erro no upload de PDF:', err);
+      document.getElementById('pdfLoadingState').style.display = 'none';
+      alert('Ocorreu uma falha ao enviar os arquivos PDF para o servidor.');
+    }
+  }
+
+  function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result;
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = error => reject(error);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function renderPdfResults(res) {
+    document.getElementById('pdfResultsContainer').style.display = 'block';
+
+    document.getElementById('kpiPdfFiles').innerText = res.parsedFiles.length;
+    document.getElementById('kpiPdfTickets').innerText = res.totalTickets;
+    document.getElementById('kpiPdfQtd').innerText = res.totalQtd;
+
+    let pesoTotalSum = 0;
+    res.parsedFiles.forEach(f => {
+      if (f.metadata && f.metadata.pesoLiquido) {
+        const val = parseFloat(f.metadata.pesoLiquido.replace(/\./g, '').replace(',', '.'));
+        if (!isNaN(val)) pesoTotalSum += val;
+      }
+    });
+    document.getElementById('kpiPdfPeso').innerText = pesoTotalSum > 0 ? `${pesoTotalSum.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} kg` : 'N/D';
+
+    const tbody = document.getElementById('pdfPreviewTableBody');
+    tbody.innerHTML = '';
+
+    const allTickets = [];
+    res.parsedFiles.forEach(pf => {
+      pf.tickets.forEach(t => allTickets.push(t));
+    });
+
+    if (allTickets.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; color: var(--muted); padding: 20px;">Nenhum ticket com tabela padronizada foi identificado no PDF. O Excel resumido estará disponível para download.</td></tr>`;
+    } else {
+      populateTableRows(allTickets);
+    }
+
+    filterInput.value = '';
+    filterInput.oninput = () => {
+      const q = filterInput.value.toLowerCase().trim();
+      if (!q) {
+        populateTableRows(allTickets);
+        return;
+      }
+      const filtered = allTickets.filter(t => 
+        (t.ticket || '').toLowerCase().includes(q) ||
+        (t.lote || '').toLowerCase().includes(q) ||
+        (t.gem || '').toLowerCase().includes(q) ||
+        (t.guia || '').toLowerCase().includes(q) ||
+        (t.container || '').toLowerCase().includes(q) ||
+        (t.docEntrada || '').toLowerCase().includes(q) ||
+        (t.docBase || '').toLowerCase().includes(q)
+      );
+      populateTableRows(filtered);
+    };
+
+    const copyBtn = document.getElementById('pdfCopyBtn');
+    if (copyBtn) {
+      copyBtn.onclick = () => {
+        if (allTickets.length === 0) {
+          alert('Nenhum ticket disponível para copiar.');
+          return;
+        }
+        const headers = ['Guia Nº', 'Container', 'Ticket', 'GEM', 'Lote', 'Data Fabricação', 'Quantidade', 'Localização', 'Doc Entrada / Fiscal', 'Validade', 'Doc Base'];
+        const rows = allTickets.map(t => [
+          t.guia || '',
+          t.container || '',
+          t.ticket || '',
+          t.gem || '',
+          t.lote || '',
+          t.fabric || '',
+          t.qtd || 0,
+          t.localiz || '',
+          t.docEntrada || '',
+          t.validade || '',
+          t.docBase || ''
+        ].join('\t'));
+
+        const tsvText = [headers.join('\t'), ...rows].join('\n');
+        navigator.clipboard.writeText(tsvText).then(() => {
+          alert('✅ Tabela copiada com sucesso!\n\nAgora você pode abrir o Google Sheets ou o Excel e pressionar Ctrl+V para colar todas as colunas perfeitamente.');
+        }).catch(err => {
+          console.error('Erro ao copiar para área de transferência:', err);
+        });
+      };
+    }
+
+    downloadBtn.onclick = () => {
+      if (!res.excelBase64) return;
+      const byteCharacters = atob(res.excelBase64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = res.fileName || 'Guia_Embarque.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+  }
+
+  function populateTableRows(ticketsList) {
+    const tbody = document.getElementById('pdfPreviewTableBody');
+    if (ticketsList.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; color: var(--muted); padding: 20px;">Nenhum ticket encontrado com o filtro pesquisado.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = ticketsList.map(t => `
+      <tr>
+        <td><strong>${t.guia || '-'}</strong></td>
+        <td><code>${t.container || '-'}</code></td>
+        <td><strong>${t.ticket}</strong></td>
+        <td>${t.gem || '-'}</td>
+        <td>${t.lote || '-'}</td>
+        <td>${t.fabric || '-'}</td>
+        <td><span class="badge badge-success">${t.qtd}</span></td>
+        <td>${t.localiz || '-'}</td>
+        <td>${t.docEntrada || '-'}</td>
+        <td>${t.validade || '-'}</td>
+        <td><small style="color: var(--muted);">${t.docBase || '-'}</small></td>
+      </tr>
+    `).join('');
   }
 }
 
