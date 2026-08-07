@@ -690,6 +690,7 @@ function attachPlanilhaEvents(){
       });
 
       renderDraftList();
+      updateProdutoCombobox(window.currentPlanilhaData || [], cnpj);
     });
   }
 
@@ -721,6 +722,7 @@ function attachPlanilhaEvents(){
       window.currentDraftProducts = [];
       renderDraftList();
       renderFinalAgrupamentosList();
+      updateProdutoCombobox(window.currentPlanilhaData || [], cnpj);
     });
   }
 
@@ -1544,15 +1546,42 @@ function updateProdutoCombobox(data, selectedCNPJ) {
     ? data.filter(item => item.CNPJ === selectedCNPJ)
     : data;
 
+  // Identificar produtos já utilizados no rascunho atual ou em agrupamentos salvos para este CNPJ
+  const usedCodes = new Set();
+
+  if (selectedCNPJ) {
+    // 1. Do rascunho do agrupamento atual
+    if (window.activeFilterCNPJ === selectedCNPJ && window.currentDraftProducts) {
+      window.currentDraftProducts.forEach(p => usedCodes.add(p.codigo));
+    }
+
+    // 2. Dos agrupamentos salvos na Lista Final
+    if (window.finalAgrupamentosList) {
+      window.finalAgrupamentosList.forEach(group => {
+        if (group.cnpj === selectedCNPJ && group.produtos) {
+          group.produtos.forEach(p => usedCodes.add(p.codigo));
+        }
+      });
+    }
+  }
+
   const prodMap = new Map();
   filteredData.forEach(item => {
     const codigo = item.Codigo || '';
     if (!codigo) return;
+    // Ocultar produtos já alocados em rascunhos ou agrupamentos salvos
+    if (usedCodes.has(codigo)) return;
+
     if (!prodMap.has(codigo)) {
       const label = item.Descricao ? `${codigo} - ${item.Descricao}` : codigo;
       prodMap.set(codigo, label);
     }
   });
+
+  if (prodMap.size === 0 && selectedCNPJ && usedCodes.size > 0) {
+    selectCodigoProduto.innerHTML = '<option value="">-- Todos os produtos já foram agrupados --</option>';
+    return;
+  }
 
   prodMap.forEach((label, codigo) => {
     const opt = document.createElement('option');
@@ -1618,6 +1647,8 @@ function removeDraftItem(index) {
   if (window.currentDraftProducts && window.currentDraftProducts[index]) {
     window.currentDraftProducts.splice(index, 1);
     renderDraftList();
+    const selectCNPJ = document.getElementById('selectCNPJ');
+    updateProdutoCombobox(window.currentPlanilhaData || [], selectCNPJ ? selectCNPJ.value : '');
   }
 }
 
@@ -1651,6 +1682,8 @@ function removeFinalAgrupamentoItem(index) {
   if (window.finalAgrupamentosList && window.finalAgrupamentosList[index]) {
     window.finalAgrupamentosList.splice(index, 1);
     renderFinalAgrupamentosList();
+    const selectCNPJ = document.getElementById('selectCNPJ');
+    updateProdutoCombobox(window.currentPlanilhaData || [], selectCNPJ ? selectCNPJ.value : '');
   }
 }
 
