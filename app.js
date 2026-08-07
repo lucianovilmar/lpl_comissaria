@@ -1822,15 +1822,61 @@ async function generateMinervaExcel(data){
   const tLogRow = 16;
   const tTotalRow = 19;
 
-  const groups = {};
-  data.forEach(item => {
-    const cnpj = item.CNPJ || 'SEM_CNPJ';
-    if (!groups[cnpj]) groups[cnpj] = { CNPJ: item.CNPJ, items: [] };
-    groups[cnpj].items.push(item);
-  });
-  const sortedGroups = Object.values(groups).sort((a, b) => (a.CNPJ || '').localeCompare(b.CNPJ || ''));
+  // 4. Processar Grupos / Agrupamentos
+  let blocksToExport = [];
+  const finalAgrupamentos = window.finalAgrupamentosList || [];
 
-  for (const group of sortedGroups) {
+  if (finalAgrupamentos.length === 0) {
+    // Modo Padrão: Agrupar tudo por CNPJ
+    const groups = {};
+    data.forEach(item => {
+      const cnpj = item.CNPJ || 'SEM_CNPJ';
+      if (!groups[cnpj]) groups[cnpj] = { CNPJ: item.CNPJ, items: [] };
+      groups[cnpj].items.push(item);
+    });
+    blocksToExport = Object.values(groups).sort((a, b) => (a.CNPJ || '').localeCompare(b.CNPJ || ''));
+  } else {
+    // Modo Customizado: Agrupar por Agrupamentos Registrados + Sobras por CNPJ
+    const cnpjs = [...new Set(data.map(item => item.CNPJ))].filter(Boolean).sort();
+
+    for (const cnpj of cnpjs) {
+      const cnpjItems = data.filter(item => item.CNPJ === cnpj);
+      const cnpjAgrupamentos = finalAgrupamentos.filter(g => g.cnpj === cnpj);
+      const matchedIndexes = new Set();
+
+      // Processar cada agrupamento cadastrado para este CNPJ
+      for (const groupDef of cnpjAgrupamentos) {
+        const prodCodes = new Set((groupDef.produtos || []).map(p => p.codigo));
+        const groupItems = cnpjItems.filter((item, idx) => {
+          if (prodCodes.has(item.Codigo)) {
+            matchedIndexes.add(idx);
+            return true;
+          }
+          return false;
+        });
+
+        if (groupItems.length > 0) {
+          blocksToExport.push({
+            CNPJ: cnpj,
+            nomeAgrupamento: groupDef.nome,
+            items: groupItems
+          });
+        }
+      }
+
+      // Processar produtos remanescentes deste CNPJ (não incluídos em nenhum agrupamento)
+      const leftoverItems = cnpjItems.filter((_, idx) => !matchedIndexes.has(idx));
+      if (leftoverItems.length > 0) {
+        blocksToExport.push({
+          CNPJ: cnpj,
+          nomeAgrupamento: cnpjAgrupamentos.length > 0 ? 'Outros Produtos' : '',
+          items: leftoverItems
+        });
+      }
+    }
+  }
+
+  for (const group of blocksToExport) {
     const groupStartRow = currentDestRow;
     
     const products = calculateAggregation(group.items);
