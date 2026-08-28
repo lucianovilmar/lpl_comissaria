@@ -32,7 +32,140 @@ flowchart TD
 
 ---
 
-## 🚢 2. Terminal 1: TCP (Terminal de Contêineres de Paranaguá)
+## 🎨 2. Especificação da Interface do Usuário (UI/UX) - Ordem de Telas e Transições Visuais
+
+A interface de busca de contêineres possui **3 Estados de Visualização Dinâmicos** que se alteram de acordo com o fluxo da pesquisa:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Estado1_Inicial: Acessa a tela
+    Estado1_Inicial --> Estado2_Buscando: Clica em "Pesquisar"
+    Estado2_Buscando --> Estado3_Resultados: Conclui consulta nos portos
+    Estado3_Resultados --> Estado2_Buscando: Nova pesquisa por contêiner / porto
+```
+
+### 🖼️ Estado 1: Tela Inicial & Status de Conexão dos Portos
+- **Cabeçalho Principal**: Título `LPL Planilha & Rastreamento` com botões superiores `🌐 Abrir Portal TCP` e `🔗 Sincronizador 1 Clique`.
+- **Formulário de Busca**:
+  - `Código do Contêiner` (Input text aceitando busca única ou em lote separada por vírgulas, ex: `MNBU0521466, MMAU1171363`).
+  - `Booking / Reserva (Itapoá)` (Input text opcional).
+  - Botão azul `Pesquisar`.
+- **Grid de Saúde dos Terminais (4 Cards)**:
+  - `TCP (Paranaguá)`: Exibe pílula verde `Conectado (28/08 às 14:50)` se os cookies estão válidos, ou vermelha `Desconectado (Sem cookies)`.
+  - `POA (Itapoá)` / `NAV (Portonave)` / `TEC (Teconline)`: Cards interativos que permitem clicar para consultar um porto específico.
+
+---
+
+### ⏳ Estado 2: Tela "Buscando nos terminais portuários..."
+- **Alteração nos Cards Superiores**:
+  - Os cards dos terminais entram no estado `searching` (borda azul pulsante com animação CSS `@keyframes pulse-active`).
+  - As pílulas de status exibem o texto `Buscando...`.
+- **Área Central de Progresso**:
+  - Exibe a mensagem em destaque: **`Buscando nos terminais portuários...`** acompanhada por um spinner animado.
+  - Renderiza uma lista vertical de cartões de progresso para cada contêiner informado no lote.
+  - **Evolução em Tempo Real**:
+    - Enquanto pesquisa: Pílula azul com spinner `MNBU0521466 | Buscando...`
+    - Ao encontrar: Altera para borda verde com ícone `✔ Achado em TCP (Bkg: 334290)`
+    - Se não encontrar: Altera para borda vermelha com ícone `✖ Não encontrado`
+
+---
+
+### 📊 Estado 3: Tela de Resultados da Busca (Card Rastreamento Completo)
+Após a conclusão da pesquisa, a área central exibe o contador `Resultados da busca (N):` e renderiza os cartões detalhados de cada contêiner:
+
+#### 1. Cabeçalho do Cartão
+- Badge colorido do porto (`[ TCP ]` azul, `[ POA ]` verde, `[ NAV ]` roxo, `[ TEC ]` laranja).
+- Número do Contêiner em destaque (`MNBU0521466`).
+- Horário da consulta (`12:47:54`).
+
+#### 2. Barra de Progresso (Stepper de 4 Etapas Visual)
+Uma linha do tempo horizontal mostrando o avanço físico/operacional da carga:
+- **Etapa 1**: `Entrada` (Data de Gate In)
+- **Etapa 2**: `Aduaneiro` (Data de liberação RFB/SIF)
+- **Etapa 3**: `Embarque` (Data de embarque no navio)
+- **Etapa 4**: `Faturamento` (Data de faturamento/saída)
+- *Estilização*: Círculos verdes com check `✓` para etapas concluídas, círculos azuis para a etapa atual ativa, e cinzas para pendentes, interligados por linhas de progresso coloridas.
+
+#### 3. Menu de Sub-abas (`Situação` | `Detalhes` | `Agendamento`)
+- **Aba `Situação` (Ativa por padrão)**:
+  Grid responsivo com quadros de 2 linhas (Título em cinza + Valor em negrito):
+  - `Número:` `MNBU0521466`
+  - `Data de Cadastro:` `23/06/2026 10:14`
+  - `Data de Entrada:` `25/06/2026 15:06`
+  - `Data de Embarque:` `-`
+  - `Data de Saída:` `-`
+  - `Dias no Porto:` `1`
+  - `Liberado Ordem de Embarque:` `Sim`
+  - `Porto Descarga:` `Ningbo`
+  - `Retenções:` `Ver`
+  - `Navio | Serviço:` `CAP SAN ARTEMISSIO | AS2`
+  - `Histórico de Cobrança:` `Ver`
+  - `LAR:` `-`
+  - `Status:` `Dentro do Terminal`
+  - `Recepção CCT:` `25/06/2026 15:41`
+  - `Entrega CCT:` `-`
+  - `Modalidade:` `LONGO_CURSO`
+
+- **Aba `Detalhes`**:
+  Exibe os pares chave-valor de pesagem, tara, payload, e a tabela de documentos vinculados (DI, DUE, CE, Termo de Fiel Depositário).
+
+- **Aba `Agendamento`**:
+  Exibe a timeline específica do portão do terminal (Agendamento, SAV, Entrada Gate, Operação, Saída Gate).
+
+---
+
+## 🛠️ 3. Código Frontend de Referência (HTML/JS/CSS)
+
+### CSS da Animação do Estado "Buscando":
+```css
+@keyframes pulse-active {
+  0% { box-shadow: 0 0 0 0 rgba(10, 132, 255, 0.4); }
+  70% { box-shadow: 0 0 0 8px rgba(10, 132, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(10, 132, 255, 0); }
+}
+
+.spinner-inline {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-radius: 50%;
+  border-top-color: #0a84ff;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+```
+
+### Função de Troca de Sub-abas (`switchSubTab`):
+```javascript
+function switchSubTab(btn, tabName, containerId) {
+  const container = btn.closest('.sub-tabs-container');
+  if (!container) return;
+
+  // Atualizar botões
+  container.querySelectorAll('.sub-tab-btn').forEach(b => {
+    b.classList.remove('active');
+    b.style.color = 'var(--muted)';
+    b.style.borderBottomColor = 'transparent';
+  });
+
+  btn.classList.add('active');
+  btn.style.color = 'var(--text)';
+  btn.style.borderBottomColor = '#bc9855';
+
+  // Atualizar conteúdos
+  container.querySelectorAll('.sub-tab-content').forEach(c => c.style.display = 'none');
+  const targetContent = document.getElementById(`content-${tabName}-${containerId}`);
+  if (targetContent) targetContent.style.display = 'block';
+}
+```
+
+---
+
+## 🚢 4. Terminal 1: TCP (Terminal de Contêineres de Paranaguá)
 
 ### A. Fluxo de Autenticação e Cookies
 - **Portal**: `https://meuportal.tcp.com.br`
@@ -64,25 +197,57 @@ await page.evaluateOnNewDocument(() => {
 ```json
 {
   "api": "TCP",
-  "container": "CRLU1339221",
-  "status": "Importação Liberada",
-  "weight": "22.400 kg",
-  "type": "40HC",
-  "vessel": "MSC VALERIA / 241A",
-  "booking": "BKG-TCP-98765",
-  "location": "Pátio Principal - Quadra B2",
-  "timeScraped": "11:05:00",
-  "history": [
-    { "event": "Gate In (Entrada no terminal)", "date": "2026-06-24 08:30" },
-    { "event": "Liberação Receita Federal", "date": "2026-06-24 14:15" },
-    { "event": "Pronto para Retirada", "date": "2026-06-25 09:00" }
-  ]
+  "container": "MNBU0521466",
+  "status": "Dentro do Terminal",
+  "isDetailed": true,
+  "stepper": {
+    "Entrada": { "date": "25/06/2026 15:06", "state": "completed" },
+    "Aduaneiro": { "date": "25/06/2026 15:41", "state": "completed" },
+    "Embarque": { "date": "-", "state": "pending" },
+    "Faturamento": { "date": "-", "state": "pending" }
+  },
+  "situacao": {
+    "Número": "MNBU0521466",
+    "Data de Cadastro": "23/06/2026 10:14",
+    "Data de Entrada": "25/06/2026 15:06",
+    "Data de Embarque": "-",
+    "Data de Saída": "-",
+    "Dias no Porto": "1",
+    "Liberado Ordem de Embarque": "Sim",
+    "Porto Descarga": "Ningbo",
+    "Retenções": "Ver",
+    "Navio | Serviço": "CAP SAN ARTEMISSIO | AS2",
+    "Histórico de Cobrança": "Ver",
+    "LAR": "-",
+    "Status": "Dentro do Terminal",
+    "Recepção CCT": "25/06/2026 15:41",
+    "Entrega CCT": "-",
+    "Modalidade": "LONGO_CURSO"
+  },
+  "detalhes": {
+    "kvs": {
+      "Peso Bruto": "28.500 kg",
+      "Tipo": "40HC"
+    },
+    "documentos": []
+  },
+  "agendamento": {
+    "kvs": {},
+    "timeline": {
+      "Agendamento": "24/06/2026 10:00",
+      "SAV": "25/06/2026 14:00",
+      "Entrada Gate": "25/06/2026 15:06",
+      "Operação": "Em Processo",
+      "Saída Gate": "-"
+    }
+  },
+  "timeScraped": "12:47:54"
 }
 ```
 
 ---
 
-## ⚓ 3. Terminal 2: Porto Itapoá (POA)
+## ⚓ 5. Terminal 2: Porto Itapoá (POA)
 
 ### A. Fluxo de Rastreamento e Regex de Agendamento
 - **Portal**: `https://portos.portoitapoa.com.br`
@@ -115,15 +280,12 @@ await page.evaluateOnNewDocument(() => {
 
 ---
 
-## ⛵ 4. Terminal 3: Portonave (NAV - Navegantes)
+## ⛵ 6. Terminal 3: Portonave (NAV - Navegantes)
 
 ### A. Fluxo de Consulta
 - **Portal**: `https://www.portonave.com.br`
 - **Cookies**: `nav-cookies.json`
-- **Campos Extraídos**:
-  - Navio / Viagem.
-  - Status de Presença de Carga no Recinto Alfandegado.
-  - Pátio e datas de Gate In / Gate Out.
+- **Campos Extraídos**: Navio/Viagem, Status de Presença de Carga, Pátio, Datas de Gate In / Gate Out.
 
 ### B. Estrutura do JSON de Retorno (NAV)
 ```json
@@ -142,7 +304,7 @@ await page.evaluateOnNewDocument(() => {
 
 ---
 
-## 📦 5. Terminal 4: Tecon Rio Grande (TEC)
+## 📦 7. Terminal 4: Tecon Rio Grande (TEC)
 
 ### A. Fluxo de Consulta
 - **Portal**: `https://www.tecon.com.br`
@@ -165,7 +327,7 @@ await page.evaluateOnNewDocument(() => {
 
 ---
 
-## 📊 6. Regra de Consolidação de Status para o Dashboard Frontend
+## 📊 8. Regra de Consolidação de Status para o Dashboard Frontend
 
 Para calcular o status consolidado de cada processo na tabela do novo **Dashboard de Relatórios**:
 
@@ -192,7 +354,7 @@ function calculateAggregatedStatus(statuses) {
 
 ---
 
-## 📝 7. Checklist de Migração para o Servidor Local da LPL
+## 📝 9. Checklist de Migração para o Servidor Local da LPL
 
 1. **Variáveis de Ambiente (`.env`)**:
    - `PORT=3000` (ou porta desejada no servidor interno).
