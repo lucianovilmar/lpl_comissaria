@@ -1,65 +1,51 @@
-# 🚀 Guia de Orientação para a IA no Outro Projeto (LPL - Relatórios - Dashboard)
+# 🚀 Guia de Orientação Definitivo para a IA no Outro Projeto (LPL - Relatórios - Dashboard)
 
-> **Mapeamento de Telas**:
-> - **Projeto Atual (LPL Comissária)**: Módulo **`LPL Planilha & Rastreamento`** (Consulta de Contêineres).
-> - **Novo Projeto (LPL - Relatórios - Dashboard)**: Tela **`Situação nos Portos`** (dentro de **`LPL Planilha & Rastreamento`**).
-
-Para garantir que a Inteligência Artificial no outro projeto entenda perfeitamente a arquitetura e implemente a consulta **REAL da API/Portal do TCP Paranaguá** na tela **`Situação nos Portos`** (sem usar dados estáticos ou fictícios de imagem), siga as instruções abaixo.
+> **⚠️ REGRA DE ESCOPO (NÃO ALTERAR OUTRAS TELAS)**:
+> - **NÃO altere ou substitua** o layout existente, telas de login, controle de usuários, ou a geração de relatórios já criadas no projeto **LPL - Relatórios - Dashboard**.
+> - **Altere EXCLUSIVAMENTE** a tela **`Situação nos Portos`** (localizada dentro do menu **`LPL Planilha & Rastreamento`**).
 
 ---
 
-## 📌 Opção 1: Copiar o Prompt Pronto abaixo no outro chat
+## 📌 Prompt de Copia e Cola para o Chat do Outro Projeto
 
 Copie e cole o texto dentro do quadro abaixo diretamente na primeira mensagem do chat do projeto **LPL - Relatórios - Dashboard**:
 
 ```text
-Olá! Para a tela "Situação nos Portos" (dentro de "LPL Planilha & Rastreamento"), referente ao Rastreamento de Contêineres no TCP Paranaguá, NUNCA use dados estáticos, mockados ou fixos de imagem.
+Olá! Precisamos implementar a funcionalidade de Rastreamento de Contêineres na tela "Situação nos Portos" (dentro do menu "LPL Planilha & Rastreamento").
 
-Precisamos implementar a consulta REAL e DINÂMICA via Puppeteer no Node.js usando cookies de sessão ativas do portal TCP.
+ATENÇÃO: Mantenha 100% intactos a tela de Login, o Controle de Usuários, o Layout Geral e a área de Relatórios existentes. Vamos trabalhar EXCLUSIVAMENTE na tela "Situação nos Portos".
+
+Para o rastreamento dos 4 terminais portuários (TCP Paranaguá, Porto Itapoá - POA, Portonave - NAV e Tecon Rio Grande - TEC), NUNCA use dados estáticos, mockados ou fixos de imagem.
 
 Por favor, implemente a arquitetura técnica baseada nas seguintes regras:
 
-1. BACKEND (ports-crawler.js):
-   - Crie a função `queryTCP(containerCode)` utilizando Puppeteer em modo headless (`headless: true`).
-   - Carregue o arquivo de cookies `tcp-cookies.json`.
-   - Aplique evasão de WAF (`navigator.webdriver = undefined`).
-   - Navegue para `https://portal.tcp.com.br/consulta-geral/conteineres`.
-   - Preencha o input `input#search` com o código do contêiner e execute a busca.
-   - Clique no link da tabela lateral `app-conteiner-side-table a` para abrir o painel de detalhes.
-   - Raspe o HTML do Angular Material extraindo as 3 sub-abas:
-     * Situação: pares chave-valor (Número, Data Cadastro, Data Entrada, Data Saída, Status, Navio/Serviço, etc.).
-     * Detalhes: peso bruto, tipo ISO e tabela de documentos.
-     * Agendamento: timeline do portão (Agendamento, SAV, Entrada Gate, Operação, Saída Gate).
-     * Stepper de 4 Etapas: Entrada, Aduaneiro, Embarque, Faturamento.
-   - Retorne o objeto JSON estruturado com o campo `isDetailed: true`.
+1. GERENCIAMENTO E VERIFICAÇÃO DE COOKIES (server.js):
+   - Crie a rota `GET /api/cookies/status` que lê os arquivos `tcp-cookies.json`, `poa-cookies.json`, `nav-cookies.json` e `tec-cookies.json` na raiz do backend e responde se cada porto está "Conectado" (válido) ou "Desconectado (Sem cookies)".
+   - Crie a rota `POST /api/cookies/sync` para receber e salvar os cookies de sessão enviados pelo Bookmarklet Sincronizador de 1-Clique.
 
-2. ROTA EXPRESS (server.js):
-   - Crie a rota `GET /api/search?container=CODIGO` que chama `queryTCP(containerCode)` e responde com `{ statuses: { tcp: { status: 'success', message: 'Sucesso' } }, results: [resultadoJSON] }`.
+2. CRAWLER DOS 4 PORTOS (ports-crawler.js):
+   - Implemente as funções Puppeteer para cada terminal:
+     * `queryTCP(containerCode)`: Acessa portal.tcp.com.br, preenche `input#search`, clica na tabela lateral, raspe o HTML extraindo as abas `Situação`, `Detalhes`, `Agendamento` e o Stepper de 4 Etapas (`Entrada`, `Aduaneiro`, `Embarque`, `Faturamento`).
+     * `queryPOA(containerCode, bookingCode)`: Acessa clientes.portoitapoa.com, faz login se necessário, busca por Booking ou Contêiner, clica na lupa `.flaticon2-search`, abre a modal "Detalhes do Agendamento" e usa expressões regulares (Regex) para capturar data de depósito e janela de agendamento.
+     * `queryNAV(containerCode)`: Consulta o status de recinto alfandegado e presença de carga na Portonave.
+     * `queryTEC(containerCode)`: Consulta status e liberação SIF/RFB no Tecon.
+   - Retorne objetos JSON dinâmicos com o campo `isDetailed: true`.
 
-3. FRONTEND DA TELA "SITUAÇÃO NOS PORTOS" (app.js):
-   - Faça a requisição HTTP real `fetch('/api/search?container=' + codigo)`.
-   - Ao receber o JSON do backend, NÃO exiba dados estáticos. Monte os cards dinamicamente iterando sobre as chaves do objeto `results[0].situacao`.
-   - Renderize o Stepper visual de 4 etapas e as 3 sub-abas (`Situação`, `Detalhes`, `Agendamento`).
+3. ROTA EXPRESS DE CONSULTA (server.js):
+   - Crie a rota `GET /api/search?container=CODIGO&booking=BOOKING` que executa as consultas nos portos e retorna o objeto com `statuses` e o array `results`.
 
-Por favor, comece estruturando essa consulta real no backend e integrando o retorno dinâmico na tela "Situação nos Portos"!
+4. FRONTEND DA TELA "SITUAÇÃO NOS PORTOS" (app.js):
+   - **Grid de Saúde dos Portos**: Renderize os 4 cards de status superiores (TCP, POA, NAV, TEC). Adicione um polling a cada 5 segundos `setInterval(fetchCookiesStatus, 5000)` chamando `/api/cookies/status` para manter os cards verdes ("Conectado") ou vermelhos ("Desconectado").
+   - **Pesquisa Dinâmica**: Ao clicar em "Pesquisar", chame `fetch('/api/search?container=' + codigo)`. Exiba o loader "Buscando nos terminais portuários..." e substitua pelo Card de Rastreamento com Stepper de 4 Etapas, as 3 sub-abas (`Situação`, `Detalhes`, `Agendamento`) e o Grid KPI dinâmico.
+
+Por favor, comece criando essa estrutura no backend e integrando o retorno dinâmico na tela "Situação nos Portos"!
 ```
 
 ---
 
-## 📂 Opção 2: Copiar o arquivo `guia_tecnico_api_tcp_puppeteer.md` para a pasta do outro projeto
+## 📂 Arquivos de Referência Incluídos no Repositório
 
-Se preferir, você pode copiar os dois arquivos de documentação criados aqui para a pasta raiz do outro projeto:
+Se desejar, você pode copiar os dois arquivos técnicos completos para a raiz do seu novo projeto:
 
-1. [`guia_tecnico_api_tcp_puppeteer.md`](file:///c:/Users/LVS%2006%20Dev/OneDrive/Desktop/projetosnodejs/LPL/site-novo/guia_tecnico_api_tcp_puppeteer.md)
-2. [`manual_arquitetura_rastreamento_portos.md`](file:///c:/Users/LVS%2006%20Dev/OneDrive/Desktop/projetosnodejs/LPL/site-novo/manual_arquitetura_rastreamento_portos.md)
-
-Depois de colocar os arquivos na pasta do outro projeto, envie a seguinte mensagem para a IA de lá:
-
-> *"Por favor, leia os arquivos `guia_tecnico_api_tcp_puppeteer.md` e `manual_arquitetura_rastreamento_portos.md` localizados na raiz do projeto. Neles consta o código Node.js/Puppeteer completo da função `queryTCP`, a rota `/api/search` e a renderização do frontend para a tela Situação nos Portos. Siga exatamente essa especificação para realizar a consulta real nos portos sem usar dados mockados."*
-
----
-
-### 🔥 O que isso vai garantir?
-- A IA do outro projeto saberá exatamente que a tela **`Situação nos Portos`** usa **raspagem headless em tempo real**.
-- Ela não tentará adivinhar ou colocar dados estáticos da imagem.
-- O resultado final na tela **`Situação nos Portos`** do seu novo Dashboard ficará idêntico a este site funcional!
+1. [`guia_tecnico_api_tcp_puppeteer.md`](file:///c:/Users/LVS%2006%20Dev/OneDrive/Desktop/projetosnodejs/LPL/site-novo/guia_tecnico_api_tcp_puppeteer.md) - Contém o código Node.js/Puppeteer completo da consulta do TCP, rotas Express e frontend.
+2. [`manual_arquitetura_rastreamento_portos.md`](file:///c:/Users/LVS%2006%20Dev/OneDrive/Desktop/projetosnodejs/LPL/site-novo/manual_arquitetura_rastreamento_portos.md) - Contém o fluxo dos 4 portos (TCP, POA, NAV, TEC), verificação de cookies e o layout visual das 3 telas.
