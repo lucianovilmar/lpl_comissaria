@@ -1,6 +1,10 @@
 # 🚀 Guia de Orientação para a IA no Outro Projeto (LPL - Relatórios - Dashboard)
 
-Para garantir que a Inteligência Artificial no outro projeto entenda perfeitamente a arquitetura e implemente a consulta **REAL da API/Portal do TCP Paranaguá** (sem usar dados estáticos ou fictícios de imagem), siga as instruções abaixo.
+> **Mapeamento de Telas**:
+> - **Projeto Atual (LPL Comissária)**: Módulo **`LPL Planilha & Rastreamento`** (Consulta de Contêineres).
+> - **Novo Projeto (LPL - Relatórios - Dashboard)**: Tela **`Situação nos Portos`** (dentro de **`LPL Planilha & Rastreamento`**).
+
+Para garantir que a Inteligência Artificial no outro projeto entenda perfeitamente a arquitetura e implemente a consulta **REAL da API/Portal do TCP Paranaguá** na tela **`Situação nos Portos`** (sem usar dados estáticos ou fictícios de imagem), siga as instruções abaixo.
 
 ---
 
@@ -9,9 +13,9 @@ Para garantir que a Inteligência Artificial no outro projeto entenda perfeitame
 Copie e cole o texto dentro do quadro abaixo diretamente na primeira mensagem do chat do projeto **LPL - Relatórios - Dashboard**:
 
 ```text
-Olá! Para a funcionalidade de Rastreamento de Contêineres nos Portos (especialmente no TCP Paranaguá), NUNCA use dados estáticos, mockados ou fixos de imagem.
+Olá! Para a tela "Situação nos Portos" (dentro de "LPL Planilha & Rastreamento"), referente ao Rastreamento de Contêineres no TCP Paranaguá, NUNCA use dados estáticos, mockados ou fixos de imagem.
 
-Precisamos implementar a consulta REAL e DINÂMICA via Puppeteer no Node.js usando cookies de sessão ativas.
+Precisamos implementar a consulta REAL e DINÂMICA via Puppeteer no Node.js usando cookies de sessão ativas do portal TCP.
 
 Por favor, implemente a arquitetura técnica baseada nas seguintes regras:
 
@@ -32,12 +36,12 @@ Por favor, implemente a arquitetura técnica baseada nas seguintes regras:
 2. ROTA EXPRESS (server.js):
    - Crie a rota `GET /api/search?container=CODIGO` que chama `queryTCP(containerCode)` e responde com `{ statuses: { tcp: { status: 'success', message: 'Sucesso' } }, results: [resultadoJSON] }`.
 
-3. FRONTEND (app.js):
+3. FRONTEND DA TELA "SITUAÇÃO NOS PORTOS" (app.js):
    - Faça a requisição HTTP real `fetch('/api/search?container=' + codigo)`.
    - Ao receber o JSON do backend, NÃO exiba dados estáticos. Monte os cards dinamicamente iterando sobre as chaves do objeto `results[0].situacao`.
    - Renderize o Stepper visual de 4 etapas e as 3 sub-abas (`Situação`, `Detalhes`, `Agendamento`).
 
-Por favor, comece estruturando essa consulta real no backend e integrando o retorno dinâmico no frontend!
+Por favor, comece estruturando essa consulta real no backend e integrando o retorno dinâmico na tela "Situação nos Portos"!
 ```
 
 ---
@@ -51,11 +55,11 @@ Se preferir, você pode copiar os dois arquivos de documentação criados aqui p
 
 Depois de colocar os arquivos na pasta do outro projeto, envie a seguinte mensagem para a IA de lá:
 
-> *"Por favor, leia os arquivos `guia_tecnico_api_tcp_puppeteer.md` e `manual_arquitetura_rastreamento_portos.md` localizados na raiz do projeto. Neles consta o código Node.js/Puppeteer completo da função `queryTCP`, a rota `/api/search` e a renderização do frontend. Siga exatamente essa especificação para realizar a consulta real nos portos sem usar dados mockados."*
+> *"Por favor, leia os arquivos `guia_tecnico_api_tcp_puppeteer.md` e `manual_arquitetura_rastreamento_portos.md` localizados na raiz do projeto. Neles consta o código Node.js/Puppeteer completo da função `queryTCP`, a rota `/api/search` e a renderização do frontend para a tela Situação nos Portos. Siga exatamente essa especificação para realizar a consulta real nos portos sem usar dados mockados."*
 
 ---
 
 ### 🔥 O que isso vai garantir?
-- A IA do outro projeto saberá exatamente que a consulta é feita por **raspagem headless em tempo real**.
+- A IA do outro projeto saberá exatamente que a tela **`Situação nos Portos`** usa **raspagem headless em tempo real**.
 - Ela não tentará adivinhar ou colocar dados estáticos da imagem.
-- O resultado final no seu novo Dashboard ficará idêntico a este site funcional!
+- O resultado final na tela **`Situação nos Portos`** do seu novo Dashboard ficará idêntico a este site funcional!
